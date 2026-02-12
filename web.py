@@ -312,8 +312,8 @@ class StudentGradeCalculator:
         st.write(f"\n✅ 列名识别完成，共识别 {len(self.column_mapping)} 个字段")
         return True, missing
 
-    # ============ 设置专业（完全不变） ============
-    def set_major(self, major_code):
+    # ============ 设置专业（添加学分要求检查） ============
+    def set_major(self, major_code):  # ← 这里必须顶格，和上面方法平级！
         """设置专业（根据用户选择）"""
         major_config = self.major_config.get_major(major_code)
         if not major_config:
@@ -324,8 +324,20 @@ class StudentGradeCalculator:
         self.major_name = major_config['专业名称']
         self.has_excellent_class = major_config['有卓越班']
 
+        # === 新增：确保学分要求存在 ===
+        if '学分要求' not in self.current_major:
+            st.error(f"❌ 专业 {self.major_name} 未配置学分要求")
+            return False
+
         if self.has_excellent_class:
             self.excellent_students = major_config.get('卓越班级学号集', {})
+            # === 新增：确保卓越/普通班学分要求存在 ===
+            if '卓越' not in self.current_major['学分要求']:
+                st.error(f"❌ 卓越班学分要求未配置")
+                return False
+            if '普通' not in self.current_major['学分要求']:
+                st.error(f"❌ 普通班学分要求未配置")
+                return False
             st.write(f"✅ 已设置专业: {self.major_name}")
             st.write(f"   📋 卓越班学生: {len(self.excellent_students)} 人")
         else:
@@ -1278,6 +1290,7 @@ def main():
                      type="primary" if st.session_state.major_code == '23kg' else "secondary"):
             st.session_state.major_code = '23kg'
             calc.set_major('23kg')
+            st.session_state.calc = calc  # ← 新增这行
             st.rerun()
 
     with col2:
@@ -1285,6 +1298,7 @@ def main():
                      type="primary" if st.session_state.major_code == '23dz' else "secondary"):
             st.session_state.major_code = '23dz'
             calc.set_major('23dz')
+            st.session_state.calc = calc  # ← 新增这行
             st.rerun()
 
     with col3:
@@ -1292,6 +1306,7 @@ def main():
                      type="primary" if st.session_state.major_code == '23dx' else "secondary"):
             st.session_state.major_code = '23dx'
             calc.set_major('23dx')
+            st.session_state.calc = calc  # ← 新增这行
             st.rerun()
 
     if st.session_state.major_code is None:
@@ -1310,30 +1325,39 @@ def main():
 
     # 显示学分要求（对应原print学分要求）
     with st.expander("📖 查看学分要求"):
-        if calc.current_major is not None:  # ✅ 先判断
-            if calc.has_excellent_class:
-                tab1, tab2 = st.tabs(["🎓 卓越班", "📚 普通班"])
-                with tab1:
-                    req_df = pd.DataFrame(
-                        list(calc.current_major['学分要求']['卓越'].items()),
-                        columns=['课程类别', '要求学分']
-                    )
-                    st.dataframe(req_df, use_container_width=True)
-                with tab2:
-                    req_df = pd.DataFrame(
-                        list(calc.current_major['学分要求']['普通'].items()),
-                        columns=['课程类别', '要求学分']
-                    )
-                    st.dataframe(req_df, use_container_width=True)
+        if calc.current_major is not None:
+            # === 新增：双重安全检查 ===
+            if '学分要求' not in calc.current_major:
+                st.warning("该专业未配置学分要求")
             else:
-                req_df = pd.DataFrame(
-                    list(calc.current_major['学分要求'].items()),
-                    columns=['课程类别', '要求学分']
-                )
-                st.dataframe(req_df, use_container_width=True)
+                if calc.has_excellent_class:
+                    tab1, tab2 = st.tabs(["🎓 卓越班", "📚 普通班"])
+                    with tab1:
+                        if '卓越' in calc.current_major['学分要求']:
+                            req_df = pd.DataFrame(
+                                list(calc.current_major['学分要求']['卓越'].items()),
+                                columns=['课程类别', '要求学分']
+                            )
+                            st.dataframe(req_df, use_container_width=True)
+                        else:
+                            st.warning("卓越班学分要求未配置")
+                    with tab2:
+                        if '普通' in calc.current_major['学分要求']:
+                            req_df = pd.DataFrame(
+                                list(calc.current_major['学分要求']['普通'].items()),
+                                columns=['课程类别', '要求学分']
+                            )
+                            st.dataframe(req_df, use_container_width=True)
+                        else:
+                            st.warning("普通班学分要求未配置")
+                else:
+                    req_df = pd.DataFrame(
+                        list(calc.current_major['学分要求'].items()),
+                        columns=['课程类别', '要求学分']
+                    )
+                    st.dataframe(req_df, use_container_width=True)
         else:
-            st.warning("请先选择专业")  # ✅ 未选择专业时显示提示
-
+            st.warning("请先选择专业")
     st.markdown("---")
 
     # ============ 4. 学期选择（对应原学期选择对话框） ============
