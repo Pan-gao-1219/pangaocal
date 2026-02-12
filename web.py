@@ -131,6 +131,29 @@ class MajorConfig:
             {'code': '23dx', 'name': '23地信（统一班级）'}
         ]
 
+def show_signature():
+    """显示醒目的作者签名"""
+    try:
+        st.image("签名.png", width=200)  # 把你的签名图片放在同级目录
+    except:
+        pass
+
+    st.markdown("""
+    <div style='text-align: center; padding: 30px; background: linear-gradient(135deg, #FF6B6B 0%, #4ECDC4 100%); border-radius: 20px; margin: 30px 0; box-shadow: 0 10px 30px rgba(0,0,0,0.3); border: 3px solid #FFE66D;'>
+        <h1 style='color: white; font-size: 56px; margin-bottom: 10px; text-shadow: 4px 4px 8px rgba(0,0,0,0.4); font-weight: 900;'>
+            👨‍🎓 潘 高 👨‍🎓
+        </h1>
+        <h2 style='color: #FFE66D; font-size: 36px; margin-bottom: 15px; text-shadow: 2px 2px 4px rgba(0,0,0,0.4); font-weight: bold;'>
+            2023级勘查技术与工程专业
+        </h2>
+        <p style='color: white; font-size: 24px; opacity: 0.95; font-weight: 500; letter-spacing: 2px;'>
+            ⚓ 中国海洋大学 · 海洋地球科学学院 ⚓
+        </p>
+        <div style='margin-top: 15px; font-size: 28px;'>
+            🎯 📊 ✨ 🎓 📚 ⚡
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 # ============ 成绩计算器类（完全不变，只改文件读取方式） ============
 class StudentGradeCalculator:
@@ -1124,7 +1147,6 @@ class StudentGradeCalculator:
 
         return result_df, excellent_count, normal_count
 
-
 # ============ Streamlit主程序（翻译Tkinter界面） ============
 def main():
     """主函数 - Streamlit版，完全对应原Tkinter逻辑"""
@@ -1412,8 +1434,9 @@ def main():
 
             st.balloons()
             st.success("✅ 成绩计算完成！")
+            show_signature()
 
-    st.markdown("---")
+            st.markdown("---")
 
     # ============ 8. 显示结果（对应原print结果） ============
     if st.session_state.result_df is not None:
