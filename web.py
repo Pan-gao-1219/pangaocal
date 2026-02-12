@@ -1235,8 +1235,8 @@ def main():
         </div>
         """, unsafe_allow_html=True)
 
-        st.markdown("---")
-a
+        st.markdown("---")  # ← 这里没有多余的 a
+
         # 对应原控制台打印的特色列表
         st.markdown("### ✨ 系统特色")
         st.markdown("- ✅ 自动检测表头在哪一行")
