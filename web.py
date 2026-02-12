@@ -853,27 +853,20 @@ class StudentGradeCalculator:
         return result_df, excellent_count, normal_count
 
     # ============ 生成学生明细（带完整错误输出） ============
+    # ============ 生成学生明细（静默版） ============
     def export_student_calculation_details(self, output_dir):
         """为每个学生生成单独的成绩计算明细Excel文件"""
         import os
-
-        st.write("🔧 **明细生成调试信息**")
-        st.write(f"   - 输出目录: {output_dir}")
 
         # === 确保输出目录存在 ===
         try:
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
-                st.write(f"   ✅ 创建目录成功")
-            else:
-                st.write(f"   ✅ 目录已存在")
         except Exception as e:
-            st.error(f"❌ 创建目录失败: {str(e)}")
             return 0, 0, []
 
         # 准备数据
         df_calc = self.df.copy()
-        st.write(f"   - 原始数据行数: {len(df_calc)}")
 
         # 获取学号
         df_calc['_学号'] = df_calc.apply(self._get_student_id, axis=1)
@@ -881,17 +874,8 @@ class StudentGradeCalculator:
 
         # 学号统计
         total_with_id = df_calc['_学号'].notna().sum()
-        unique_ids = df_calc['_学号'].nunique()
-        st.write(f"   - 有学号记录数: {total_with_id}")
-        st.write(f"   - 唯一学号数: {unique_ids}")
-
         if total_with_id == 0:
-            st.error("❌ 没有找到任何学号！请检查列映射")
             return 0, 0, []
-
-        # 显示学号样例
-        sample_ids = df_calc['_学号'].dropna().unique()[:3]
-        st.write(f"   - 学号样例: {sample_ids}")
 
         # 删除无学号记录
         df_calc = df_calc.dropna(subset=['_学号'])
@@ -900,7 +884,6 @@ class StudentGradeCalculator:
         # 确保卓越班学号集也是字符串
         if self.excellent_students:
             self.excellent_students = {str(sid) for sid in self.excellent_students}
-            st.write(f"   - 卓越班学号集: {list(self.excellent_students)[:3]}...")
 
         student_count = 0
         error_count = 0
@@ -908,38 +891,23 @@ class StudentGradeCalculator:
 
         # 分组处理
         grouped = df_calc.groupby('_学号')
-        st.write(f"   - 待处理学生数: {len(grouped)}")
 
         for i, (student_id, student_df) in enumerate(grouped):
             try:
                 student_name = student_df.iloc[0]['_姓名']
                 student_class = self._get_student_class(student_id)
 
-                st.write(f"   📄 [{i + 1}/{len(grouped)}] 正在生成: {student_id} - {student_name} ({student_class})")
-
                 detail_file = self._generate_student_detail_file(
                     student_id, student_name, student_class,
                     student_df, output_dir
                 )
 
-                if detail_file:
-                    if os.path.exists(detail_file):
-                        file_size = os.path.getsize(detail_file)
-                        st.write(f"      ✅ 成功: {os.path.basename(detail_file)} (大小: {file_size} 字节)")
-                        student_count += 1
-                        detail_files.append(detail_file)
-                    else:
-                        st.write(f"      ❌ 文件不存在: {detail_file}")
-                else:
-                    st.write(f"      ❌ 返回空路径")
-
+                if detail_file and os.path.exists(detail_file):
+                    student_count += 1
+                    detail_files.append(detail_file)
             except Exception as e:
                 error_count += 1
-                st.error(f"      ❌ 异常: {student_id} - {str(e)}")
-                import traceback
-                st.code(traceback.format_exc())
 
-        st.write(f"   ✅ 明细生成完成: 成功 {student_count}, 失败 {error_count}")
         return student_count, error_count, detail_files
 
     def _generate_student_detail_file(self, student_id, student_name, student_class,
@@ -1107,7 +1075,7 @@ class StudentGradeCalculator:
                     ['保留5位有效数字', self.format_significant_digits(avg_score, 5)]
                 ], columns=['项目', '数值'])
 
-                with pd.ExcelWriter(file_path, engine='openpyxl', mode='a') as writer:
+                with pd.ExcelWriter(file_path, engine='openpyxl', mode='w') as writer:
                     process_df.to_excel(writer, sheet_name='加权平均计算', index=False)
                     wb = writer.book
                     ws = wb['加权平均计算']
