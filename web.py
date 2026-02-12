@@ -1288,26 +1288,29 @@ def main():
 
     # 显示学分要求（对应原print学分要求）
     with st.expander("📖 查看学分要求"):
-        if calc.has_excellent_class:
-            tab1, tab2 = st.tabs(["🎓 卓越班", "📚 普通班"])
-            with tab1:
+        if calc.current_major is not None:  # ✅ 先判断
+            if calc.has_excellent_class:
+                tab1, tab2 = st.tabs(["🎓 卓越班", "📚 普通班"])
+                with tab1:
+                    req_df = pd.DataFrame(
+                        list(calc.current_major['学分要求']['卓越'].items()),
+                        columns=['课程类别', '要求学分']
+                    )
+                    st.dataframe(req_df, use_container_width=True)
+                with tab2:
+                    req_df = pd.DataFrame(
+                        list(calc.current_major['学分要求']['普通'].items()),
+                        columns=['课程类别', '要求学分']
+                    )
+                    st.dataframe(req_df, use_container_width=True)
+            else:
                 req_df = pd.DataFrame(
-                    list(calc.current_major['学分要求']['卓越'].items()),
-                    columns=['课程类别', '要求学分']
-                )
-                st.dataframe(req_df, use_container_width=True)
-            with tab2:
-                req_df = pd.DataFrame(
-                    list(calc.current_major['学分要求']['普通'].items()),
+                    list(calc.current_major['学分要求'].items()),
                     columns=['课程类别', '要求学分']
                 )
                 st.dataframe(req_df, use_container_width=True)
         else:
-            req_df = pd.DataFrame(
-                list(calc.current_major['学分要求'].items()),
-                columns=['课程类别', '要求学分']
-            )
-            st.dataframe(req_df, use_container_width=True)
+            st.warning("请先选择专业")  # ✅ 未选择专业时显示提示
 
     st.markdown("---")
 
