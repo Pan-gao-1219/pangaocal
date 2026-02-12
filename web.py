@@ -235,7 +235,7 @@ class StudentGradeCalculator:
             '学号': ['学号', 'student id', 'student_id', 'id', '学号', '考生号'],
             '姓名': ['姓名', 'name', '学生姓名'],
             '学分': ['学分', 'credit', 'credits'],
-            '总成绩': ['总成绩', '成绩', 'score', 'grade', '总评成绩', 'final score', '综合成绩'],  # ← 加上'综合成绩'
+            '总成绩': ['总成绩', '成绩', 'score', 'grade', '总评成绩', 'final score', '综合成绩', '综合'],  # ← 加这两个
             '取得方式': ['取得方式', '修读方式', 'exam type', 'acquire', '考试类型'],
             '成绩标志': ['成绩标志', '标志', 'flag', 'status', '考试状态'],
             '学年学期': ['学年学期', '学期', '学年', 'semester', 'term', 'academic year'],
