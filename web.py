@@ -912,10 +912,6 @@ class StudentGradeCalculator:
 
     def _generate_student_detail_file(self, student_id, student_name, student_class,
                                       student_df, output_dir):
-        st.write(f"      📝 开始写入Excel: {student_id}_{student_name}")
-        st.write(f"         - 课程数量: {len(student_df)}")
-        st.write(f"         - 有效成绩课程: {student_df['_计算成绩'].notna().sum() if '_计算成绩' in student_df else '尚未计算'}")
-        """生成单个学生的计算明细Excel文件"""
         import os
         from openpyxl import load_workbook
         from openpyxl.utils.dataframe import dataframe_to_rows
