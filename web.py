@@ -227,14 +227,8 @@ class StudentGradeCalculator:
     def detect_header_row(self):
         """
         核心功能：自动检测表头在第几行
-        策略：
-        1. 先读取前20行，不设表头
-        2. 找包含最多关键词的行（学号、姓名、课程、成绩等）
-        3. 该行就是表头行
         """
-        st.write("\n🔍 正在自动检测表头行...")
-
-        # 关键词权重表（完全不变）
+        # 静默检测，不输出任何内容
         keywords = {
             '学号': 10, 'student': 8, 'id': 5,
             '姓名': 10, 'name': 8,
@@ -249,7 +243,6 @@ class StudentGradeCalculator:
         best_score = 0
         best_row = 0
 
-        # 遍历前20行，计算每行的关键词得分
         for idx, row in self.raw_data.iterrows():
             row_score = 0
             row_text = ' '.join([str(cell).lower() for cell in row.values if pd.notna(cell)])
@@ -258,31 +251,20 @@ class StudentGradeCalculator:
                 if keyword.lower() in row_text:
                     row_score += score
 
-            # 额外检查：这一行有多少个非空单元格
             non_empty = row.count()
             row_score += non_empty * 0.5
-
-            st.write(f"   第{idx + 1}行: 得分 {row_score:.1f} - {row_text[:50]}...")
 
             if row_score > best_score:
                 best_score = row_score
                 best_row = idx
 
         self.header_row = best_row
-        st.write(f"\n✅ 检测到表头在第 {self.header_row + 1} 行")
-        st.write(f"   表头内容: {list(self.raw_data.iloc[self.header_row].values)}")
-
         return self.header_row
 
     # ============ 自动识别列名（完全不变） ============
     def auto_detect_columns(self):
         """自动识别列名 - 基于检测到的表头行"""
         columns = self.df.columns.tolist()
-
-        st.write(f"\n🔍 正在自动识别列名...")
-        st.write(f"📋 表头共 {len(columns)} 列:")
-        for i, col in enumerate(columns, 1):
-            st.write(f"  {i:2d}. '{col}'")
 
         # 列名模糊匹配
         col_lower = {col: str(col).lower() for col in columns}
@@ -294,22 +276,17 @@ class StudentGradeCalculator:
                 for kw in keywords:
                     if kw.lower() in col_low:
                         self.column_mapping[field] = col
-                        st.write(f"  ✅ {field:10} → '{col}'")
                         found = True
                         break
                 if found:
                     break
-            if not found:
-                st.write(f"  ⚠️ {field:10} → 未找到匹配列")
 
         # 必须字段检查
         required = ['学号', '姓名', '学分', '总成绩']
         missing = [f for f in required if f not in self.column_mapping]
         if missing:
-            st.write(f"\n❌ 错误: 缺少必要字段: {missing}")
             return False, missing
 
-        st.write(f"\n✅ 列名识别完成，共识别 {len(self.column_mapping)} 个字段")
         return True, missing
 
     # ============ 设置专业（添加学分要求检查） ============
@@ -875,10 +852,15 @@ class StudentGradeCalculator:
 
         return result_df, excellent_count, normal_count
 
-    # ============ 生成学生明细（完全不变，只改文件保存方式） ============
+    # ============ 生成学生明细（修复目录创建问题） ============
     def export_student_calculation_details(self, output_dir):
         """为每个学生生成单独的成绩计算明细Excel文件"""
         import os
+
+        # === 修复：确保输出目录存在 ===
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            print(f"📁 创建明细文件夹: {output_dir}")
 
         df_calc = self.df.copy()
         df_calc['_学号'] = df_calc.apply(self._get_student_id, axis=1)
@@ -899,12 +881,17 @@ class StudentGradeCalculator:
                     student_df, output_dir
                 )
 
-                if detail_file:
+                if detail_file and os.path.exists(detail_file):
                     student_count += 1
                     detail_files.append(detail_file)
+                    print(f"✅ 成功生成: {student_id}_{student_name}")
+                else:
+                    print(f"❌ 文件未生成: {student_id}_{student_name}")
             except Exception as e:
                 error_count += 1
+                print(f"❌ 异常: {student_id} - {str(e)}")
 
+        print(f"📊 明细生成完成: 成功 {student_count}, 失败 {error_count}")
         return student_count, error_count, detail_files
 
     # ============ 生成单个学生明细（完全不变） ============
@@ -1177,6 +1164,9 @@ def main():
         <div style='text-align: center;'>
             <h1 style='color: #2c3e50;'>🎓 2023级</h1>
             <h3 style='color: #3498db;'>成绩测算系统</h3>
+            <p style='color: #7f8c8d; font-size: 14px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #ecf0f1;'>
+                海洋地球科学学院<br>2023级勘查技术与工程<br>潘高 制
+            </p>
         </div>
         """, unsafe_allow_html=True)
 
