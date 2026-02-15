@@ -1308,18 +1308,54 @@ def main():
         st.session_state.result_df = None
 
     # ============ 1. 文件选择对话框（对应filedialog.askopenfilename） ============
+    # ============ 1. 文件选择对话框（对应filedialog.askopenfilename） ============
     st.header("📂 第一步：选择成绩表文件")
 
-    uploaded_file = st.file_uploader(
-        "请选择Excel成绩表文件",
-        type=['xlsx', 'xls'],
-        help="支持 .xlsx .xls 格式"
-    )
+    # 创建两列布局：左侧上传文件，右侧下载示例
+    col1, col2 = st.columns([3, 1])
+
+    with col2:
+        # 下载示例表格按钮
+        try:
+            # 尝试从GitHub仓库中读取示例文件
+            example_file_path = "表格使用示意.xlsx"
+            if os.path.exists(example_file_path):
+                with open(example_file_path, "rb") as f:
+                    example_data = f.read()
+                st.download_button(
+                    label="📥 下载示例表格",
+                    data=example_data,
+                    file_name="表格使用示意.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    type="secondary",
+                    help="下载示例Excel文件，查看正确的格式要求"
+                )
+            else:
+                st.info("📋 示例表格：请确保文件格式包含：学号、姓名、课程名称、学分、总成绩等字段")
+        except Exception as e:
+            st.info("📋 示例表格：请确保文件格式包含：学号、姓名、课程名称、学分、总成绩等字段")
+
+    with col1:
+        uploaded_file = st.file_uploader(
+            "请选择Excel成绩表文件",
+            type=['xlsx', 'xls'],
+            help="支持 .xlsx .xls 格式。如果不确定格式，可以点击右侧按钮下载示例表格参考"
+        )
 
     if uploaded_file is None:
-        st.info("👆 请上传Excel文件开始使用")
-        st.stop()
+        # 添加示例表格的说明
+        st.info("""
+        👆 **请上传Excel文件开始使用**
 
+        **表格格式要求：**
+        - 必须包含列：学号、姓名、学分、总成绩
+        - 可选列：取得方式、成绩标志、学年学期、课程名称等
+        - 支持任意表头位置，系统会自动识别
+
+        如果不确定格式，可以下载右侧的示例表格参考！
+        """)
+        st.stop()
     # ============ 初始化计算器 ============
     calc = StudentGradeCalculator()
     st.session_state.calc = calc
