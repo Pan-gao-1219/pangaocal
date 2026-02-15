@@ -190,7 +190,7 @@ class MajorConfig:
             {'code': '23dx', 'name': '23地信（统一班级）', 'emoji': '🛰️'},
             {'code': '24kg', 'name': '24勘工（卓越工程师）', 'emoji': '⚙️'},
             # === 新增：自定义专业入口 ===
-            {'code': 'custom', 'name': '其他专业', 'emoji': '⚡'},
+            {'code': 'custom', 'name': '其他专业（若想加入到系统中请联系我）', 'emoji': '⚡'},
         ]
             # === 以后加新专业，就在这里加一行，其他代码不用动！ ===
             # {'code': '24dz', 'name': '24地质', 'emoji': '🌋'},
@@ -1253,7 +1253,7 @@ def main():
             <h1 style='color: #2c3e50;'>🎓 中国海洋大学</h1>
             <h3 style='color: #3498db;'>成绩测算系统</h3>
             <p style='color: #7f8c8d; font-size: 14px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #ecf0f1;'>
-                海洋地球科学学院<br>2023级勘查技术与工程<br>潘高 制
+                海洋地球科学学院<br>2023级勘查技术与工程<br>潘高 制 <br>邮箱1534827320@qq.com 
             </p>
         </div>
         """, unsafe_allow_html=True)
