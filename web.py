@@ -189,7 +189,10 @@ class MajorConfig:
             {'code': '23dz', 'name': '23地质（统一班级）', 'emoji': '🗺️'},
             {'code': '23dx', 'name': '23地信（统一班级）', 'emoji': '🛰️'},
             {'code': '24kg', 'name': '24勘工（卓越工程师）', 'emoji': '⚙️'},
-            {'code': 'other', 'name': '其他班级（仅综测）', 'emoji': '📝'},  # ← 新增这一行
+            {'code': 'other', 'name': '其他班级（仅综测）', 'emoji': '📝'},
+            # === 新增：自定义专业入口 ===
+            {'code': 'custom', 'name': '自定义专业（上传文件）', 'emoji': '⚡'},
+            {'code': 'custom_manual', 'name': '自定义专业（手动录入）', 'emoji': '✏️'},
         ]
             # === 以后加新专业，就在这里加一行，其他代码不用动！ ===
             # {'code': '24dz', 'name': '24地质', 'emoji': '🌋'},
@@ -1396,6 +1399,7 @@ def main():
     st.markdown("---")
 
     # ============ 3. 专业选择对话框（动态生成，自动适配所有专业） ============
+    # ============ 3. 专业选择对话框（动态生成，自动适配所有专业） ============
     st.header("🎓 第二步：选择专业")
 
     # 获取所有专业列表
@@ -1467,6 +1471,230 @@ def main():
             st.warning("请先选择专业")
     st.markdown("---")
 
+    # ============ 新增：自定义专业培养方案录入模块（仅在自定义专业且保研模式时显示） ============
+    if st.session_state.major_code in ['custom', 'custom_manual'] and st.session_state.calc_mode == '保研':
+        st.header("📝 自定义专业培养方案")
+
+        # 提示用户当前状态
+        st.info("当前为自定义专业 + 保研模式，请设置您的专业培养方案")
+
+        # 创建标签页
+        tab1, tab2 = st.tabs(["📤 上传培养方案文件", "✏️ 手动录入"])
+
+        with tab1:
+            st.subheader("上传专业培养方案文件")
+            st.markdown("""
+            **文件格式要求：**
+            - `选修学分要求.xlsx`：包含课程类型和最低要求学分
+            - `选修课程汇总.xlsx`：包含具体的选修课程清单
+
+            可以上传单个文件或两个文件一起上传。
+            """)
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                req_file = st.file_uploader(
+                    "上传选修学分要求文件",
+                    type=['xlsx', 'xls'],
+                    key="req_file",
+                    help="包含课程类型和最低要求学分的Excel文件"
+                )
+
+            with col2:
+                course_file = st.file_uploader(
+                    "上传选修课程汇总文件",
+                    type=['xlsx', 'xls'],
+                    key="course_file",
+                    help="包含具体选修课程清单的Excel文件"
+                )
+
+            if req_file is not None or course_file is not None:
+                if st.button("应用上传的培养方案", key="apply_upload"):
+                    try:
+                        custom_major = {
+                            '专业名称': '自定义专业（上传）',
+                            '专业代码': 'custom',
+                            '有卓越班': False,
+                            '学分要求': {},
+                            '选修课列表': {
+                                '学科基础课程': [],
+                                '专业知识课程': [],
+                                '工作技能课程': []
+                            }
+                        }
+
+                        # 处理选修学分要求文件
+                        if req_file is not None:
+                            req_df = pd.read_excel(req_file)
+                            # 假设文件有两列：课程类型 和 选修最低要求学分
+                            for _, row in req_df.iterrows():
+                                course_type = row.iloc[0]  # 第一列是课程类型
+                                credit = float(row.iloc[1])  # 第二列是学分要求
+                                if pd.notna(course_type) and pd.notna(credit):
+                                    custom_major['学分要求'][course_type] = credit
+
+                            st.success(f"✅ 已加载 {len(custom_major['学分要求'])} 个类别的学分要求")
+
+                        # 处理选修课程汇总文件
+                        if course_file is not None:
+                            course_df = pd.read_excel(course_file)
+                            # 假设文件包含：课程模块、课程名称、学分等列
+                            for _, row in course_df.iterrows():
+                                module = row.iloc[0]  # 第一列是课程模块
+                                course_name = row.iloc[3] if len(row) > 3 else row.iloc[1]  # 课程名称所在列
+
+                                if pd.notna(module) and pd.notna(course_name):
+                                    if module in custom_major['选修课列表']:
+                                        if course_name not in custom_major['选修课列表'][module]:
+                                            custom_major['选修课列表'][module].append(course_name)
+
+                            st.success(f"✅ 已加载选修课程："
+                                       f"基础课{len(custom_major['选修课列表']['学科基础课程'])}门，"
+                                       f"专业课{len(custom_major['选修课列表']['专业知识课程'])}门，"
+                                       f"技能课{len(custom_major['选修课列表']['工作技能课程'])}门")
+
+                        # 将自定义专业添加到专业配置中
+                        st.session_state.calc.major_config.majors['custom'] = custom_major
+
+                        # 更新当前专业的配置
+                        st.session_state.calc.current_major = custom_major
+                        st.session_state.calc.major_name = custom_major['专业名称']
+
+                        st.success("✅ 自定义培养方案已应用！")
+                        st.rerun()
+
+                    except Exception as e:
+                        st.error(f"❌ 处理文件时出错：{str(e)}")
+
+        with tab2:
+            st.subheader("手动录入培养方案")
+
+            with st.form("manual_input_form"):
+                st.markdown("**学分要求设置**")
+
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    basic_credit = st.number_input("学科基础课程要求学分", min_value=0.0, max_value=20.0, value=6.0,
+                                                   step=0.5)
+                with col2:
+                    major_credit = st.number_input("专业知识课程要求学分", min_value=0.0, max_value=20.0, value=6.0,
+                                                   step=0.5)
+                with col3:
+                    skill_credit = st.number_input("工作技能课程要求学分", min_value=0.0, max_value=20.0, value=0.0,
+                                                   step=0.5)
+
+                st.markdown("---")
+                st.markdown("**选修课程列表设置**")
+                st.markdown("请输入课程名称，每行一个课程")
+
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+                    basic_courses = st.text_area(
+                        "学科基础课程",
+                        value="Matlab语言与应用\nPython程序设计与实践\n信号分析与处理",
+                        height=150,
+                        help="每行输入一个课程名称"
+                    )
+
+                with col2:
+                    major_courses = st.text_area(
+                        "专业知识课程",
+                        value="GNSS测量与应用\n海洋工程地质\n海洋遥感概论",
+                        height=150,
+                        help="每行输入一个课程名称"
+                    )
+
+                with col3:
+                    skill_courses = st.text_area(
+                        "工作技能课程",
+                        value="地质旅行I\n地质旅行II",
+                        height=150,
+                        help="每行输入一个课程名称"
+                    )
+
+                submitted = st.form_submit_button("✅ 应用手动录入的培养方案")
+
+                if submitted:
+                    # 处理课程列表
+                    basic_list = [c.strip() for c in basic_courses.split('\n') if c.strip()]
+                    major_list = [c.strip() for c in major_courses.split('\n') if c.strip()]
+                    skill_list = [c.strip() for c in skill_courses.split('\n') if c.strip()]
+
+                    custom_major = {
+                        '专业名称': '自定义专业（手动录入）',
+                        '专业代码': 'custom_manual',
+                        '有卓越班': False,
+                        '学分要求': {
+                            '学科基础课程': basic_credit,
+                            '专业知识课程': major_credit,
+                            '工作技能课程': skill_credit
+                        },
+                        '选修课列表': {
+                            '学科基础课程': basic_list,
+                            '专业知识课程': major_list,
+                            '工作技能课程': skill_list
+                        }
+                    }
+
+                    # 将自定义专业添加到专业配置中
+                    st.session_state.calc.major_config.majors['custom_manual'] = custom_major
+
+                    # 更新当前专业的配置
+                    st.session_state.calc.current_major = custom_major
+                    st.session_state.calc.major_name = custom_major['专业名称']
+
+                    st.success("✅ 手动录入的培养方案已应用！")
+                    st.rerun()
+
+        # 如果当前是自定义专业，显示当前配置
+        if st.session_state.major_code in ['custom', 'custom_manual']:
+            with st.expander("📋 当前自定义专业配置", expanded=True):
+                if st.session_state.calc and st.session_state.calc.current_major:
+                    # 显示学分要求
+                    st.subheader("📊 学分要求")
+                    req_df = pd.DataFrame(
+                        list(st.session_state.calc.current_major.get('学分要求', {}).items()),
+                        columns=['课程类别', '要求学分']
+                    )
+                    st.dataframe(req_df, use_container_width=True)
+
+                    # 显示选修课程列表
+                    st.subheader("📚 选修课程列表")
+                    tabs = st.tabs(["学科基础课程", "专业知识课程", "工作技能课程"])
+
+                    with tabs[0]:
+                        basic_courses = st.session_state.calc.current_major.get('选修课列表', {}).get(
+                            '学科基础课程', [])
+                        if basic_courses:
+                            for i, course in enumerate(basic_courses, 1):
+                                st.write(f"{i}. {course}")
+                        else:
+                            st.info("暂无学科基础课程")
+
+                    with tabs[1]:
+                        major_courses = st.session_state.calc.current_major.get('选修课列表', {}).get(
+                            '专业知识课程', [])
+                        if major_courses:
+                            for i, course in enumerate(major_courses, 1):
+                                st.write(f"{i}. {course}")
+                        else:
+                            st.info("暂无专业知识课程")
+
+                    with tabs[2]:
+                        skill_courses = st.session_state.calc.current_major.get('选修课列表', {}).get(
+                            '工作技能课程', [])
+                        if skill_courses:
+                            for i, course in enumerate(skill_courses, 1):
+                                st.write(f"{i}. {course}")
+                        else:
+                            st.info("暂无工作技能课程")
+                else:
+                    st.warning("请先设置培养方案")
+
+    st.markdown("---")
+
     # ============ 4. 学期选择（对应原学期选择对话框） ============
     st.header("📅 第三步：学期选择（可选）")
 
@@ -1498,6 +1726,7 @@ def main():
     st.markdown("---")
 
     # ============ 5. 计算模式选择（对应原messagebox.askyesno） ============
+    # ============ 5. 计算模式选择（对应原messagebox.askyesno） ============
     st.header("⚙️ 第四步：选择计算模式")
 
     mode_choice = st.radio(
@@ -1508,10 +1737,13 @@ def main():
     )
 
     calc_mode = '保研' if mode_choice == '保研模式' else '综测'
-    st.session_state.calc_mode = calc_mode
-    st.info(f"✅ 已选择: {calc_mode}模式")
 
-    st.markdown("---")
+    # 如果计算模式改变，更新session_state并重新运行
+    if st.session_state.calc_mode != calc_mode:
+        st.session_state.calc_mode = calc_mode
+        st.rerun()  # 添加这一行，确保自定义模块的显示状态更新
+
+    st.info(f"✅ 已选择: {calc_mode}模式")
 
     # ============ 6. 是否生成明细（对应原messagebox.askyesno） ============
     st.header("📋 第五步：明细生成设置")
