@@ -189,10 +189,8 @@ class MajorConfig:
             {'code': '23dz', 'name': '23地质（统一班级）', 'emoji': '🗺️'},
             {'code': '23dx', 'name': '23地信（统一班级）', 'emoji': '🛰️'},
             {'code': '24kg', 'name': '24勘工（卓越工程师）', 'emoji': '⚙️'},
-            {'code': 'other', 'name': '其他班级（仅综测）', 'emoji': '📝'},
             # === 新增：自定义专业入口 ===
-            {'code': 'custom', 'name': '自定义专业（上传文件）', 'emoji': '⚡'},
-            {'code': 'custom_manual', 'name': '自定义专业（手动录入）', 'emoji': '✏️'},
+            {'code': 'custom', 'name': '其他专业', 'emoji': '⚡'},
         ]
             # === 以后加新专业，就在这里加一行，其他代码不用动！ ===
             # {'code': '24dz', 'name': '24地质', 'emoji': '🌋'},
@@ -1311,7 +1309,6 @@ def main():
         st.session_state.result_df = None
 
     # ============ 1. 文件选择对话框（对应filedialog.askopenfilename） ============
-    # ============ 1. 文件选择对话框（对应filedialog.askopenfilename） ============
     st.header("📂 第一步：选择成绩表文件")
 
     # 创建两列布局：左侧上传文件，右侧下载示例
@@ -1483,6 +1480,46 @@ def main():
 
         with tab1:
             st.subheader("上传专业培养方案文件")
+
+            # 在这里添加下载参考文件的按钮
+            col_ref1, col_ref2 = st.columns(2)
+            with col_ref1:
+                # 下载选修学分要求示例
+                try:
+                    if os.path.exists("选修学分要求.xlsx"):
+                        with open("选修学分要求.xlsx", "rb") as f:
+                            req_data = f.read()
+                        st.download_button(
+                            label="📊 下载学分要求示例",
+                            data=req_data,
+                            file_name="选修学分要求.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True,
+                            type="secondary",
+                            help="下载选修学分要求示例文件，查看格式"
+                        )
+                except Exception as e:
+                    st.warning("学分要求示例文件不存在")
+
+            with col_ref2:
+                # 下载选修课程汇总示例
+                try:
+                    if os.path.exists("选修课程汇总.xlsx"):
+                        with open("选修课程汇总.xlsx", "rb") as f:
+                            course_data = f.read()
+                        st.download_button(
+                            label="📚 下载课程汇总示例",
+                            data=course_data,
+                            file_name="选修课程汇总.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True,
+                            type="secondary",
+                            help="下载选修课程汇总示例文件，查看格式"
+                        )
+                except Exception as e:
+                    st.warning("课程汇总示例文件不存在")
+
+            st.markdown("---")
             st.markdown("""
             **文件格式要求：**
             - `选修学分要求.xlsx`：包含课程类型和最低要求学分
@@ -1566,7 +1603,6 @@ def main():
 
                     except Exception as e:
                         st.error(f"❌ 处理文件时出错：{str(e)}")
-
         with tab2:
             st.subheader("手动录入培养方案")
 
