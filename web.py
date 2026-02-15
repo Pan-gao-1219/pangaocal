@@ -177,23 +177,8 @@ class MajorConfig:
                     '专业知识课程': [],
                     '工作技能课程': []
                 }
+
             }  # ← other的结束括号（最后一个不需要逗号）
-            # ------------------- 其他班级（仅综测） -------------------
-            'other': {
-                '专业名称': '其他班级（仅综测）',
-                '专业代码': 'other',
-                '有卓越班': False,
-                '学分要求': {
-                    '学科基础课程': 0.0,  # 设为0表示不限制
-                    '专业知识课程': 0.0,
-                    '工作技能课程': 0.0
-                },
-                '选修课列表': {
-                    '学科基础课程': [],  # 空列表表示所有课程都按必修处理
-                    '专业知识课程': [],
-                    '工作技能课程': []
-                }
-            }
 
         }
 
@@ -209,7 +194,7 @@ class MajorConfig:
             # === 以后加新专业，就在这里加一行，其他代码不用动！ ===
             # {'code': '24dz', 'name': '24地质', 'emoji': '🌋'},
             # {'code': '24dx', 'name': '24地信', 'emoji': '🛸'},
-        ]
+
 
     def get_major(self, major_code):
         """根据专业代码获取专业配置"""
@@ -1264,7 +1249,7 @@ def main():
     with st.sidebar:
         st.markdown("""
         <div style='text-align: center;'>
-            <h1 style='color: #2c3e50;'>🎓 2023级</h1>
+            <h1 style='color: #2c3e50;'>🎓 中国海洋大学</h1>
             <h3 style='color: #3498db;'>成绩测算系统</h3>
             <p style='color: #7f8c8d; font-size: 14px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #ecf0f1;'>
                 海洋地球科学学院<br>2023级勘查技术与工程<br>潘高 制
@@ -1300,11 +1285,11 @@ def main():
         """)
 
     # ============ 主界面标题（对应原print） ============
-    st.title("🎓 2023级学生成绩测算系统")
+    st.title("🎓 中国海洋大学学生成绩测算系统")
 
     st.markdown("""
     <div style='background-color: #f0f8ff; padding: 20px; border-radius: 10px; border-left: 5px solid #3498db; margin-bottom: 20px;'>
-        <strong>中国海洋大学 海洋地球科学学院</strong> · 23级勘工/地质/地信专业
+        <strong>中国海洋大学 海洋地球科学学院</strong>
     </div>
     """, unsafe_allow_html=True)
 
