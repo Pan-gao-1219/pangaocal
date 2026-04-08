@@ -1,0 +1,44 @@
+=== occurrence 1 ===
+      return self.majors.get(major_code)
+
+    def get_all_majors(self):
+        """获取所有专业列表（用于显示）"""
+        return self.major_display_list
+
+def show_signature():
+    """显示醒目的作者签名"""
+    try:
+        st.image("签名.png", width=200)  # 把你的签名图片放在同级目录
+    except:
+        pass
+
+    st.markdown("""
+    <div style='text-align: center; padding: 30px; backgr
+
+=== occurrence 2 ===
+ed=False):
+            major_list = MajorConfig().get_all_majors()
+            for major in major_list:
+                st.markdown(f"- {major['emoji']} {major['name']}")
+
+        st.markdown("---")
+
+        # ============ 使用流程 ============
+        with st.expander("📋 使用流程", expanded=False):
+            st.markdown("""
+            **Step 1** 上传Exce
+
+=== occurrence 3 ===
+    # 获取所有专业列表
+    major_list = calc.major_config.get_all_majors()
+
+    # 动态生成列
+    cols = st.columns(len(major_list))
+
+    for i, major in enumerate(major_list):
+        with cols[i]:
+            if st.button(
+                    f"{major['emoji']} {major['name']}",
+                    use_container_width=True,
+                    type="primary" i
+

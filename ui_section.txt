@@ -1,0 +1,32 @@
+# 获取所有专业列表
+    major_list = calc.major_config.get_all_majors()
+
+    # 动态生成列
+    cols = st.columns(len(major_list))
+
+    for i, major in enumerate(major_list):
+        with cols[i]:
+            if st.button(
+                    f"{major['emoji']} {major['name']}",
+                    use_container_width=True,
+                    type="primary" if st.session_state.major_code == major['code'] else "secondary"
+            ):
+                st.session_state.major_code = major['code']
+                success, major_name = calc.set_major(major['code'])
+                if success:
+                    st.session_state.major_name = major_name
+                    st.session_state.has_excellent_class = calc.has_excellent_class
+                    st.session_state.excellent_students = calc.excellent_students
+                    st.session_state.current_major = calc.current_major  # 新增：保存当前专业配置
+                    st.session_state.calc = calc
+                    st.session_state.just_selected_major = True
+                st.rerun()
+
+    if st.session_state.major_code is not None:
+        # ===== 显示成功选择专业的提示 =====
+        if st.session_state.get('just_selected_major', False):
+            major_name = st.session_state.get('major_name', '未知专业')
+            st.success(f"✅ 已选择专业: {major_name}")
+            if st.session_state.get('has_excellent_class', False):
+                excellent_count = len(st.session_state.get('excellent_students', {}))
+                st.success(f"   📋 卓越班学生: {excelle

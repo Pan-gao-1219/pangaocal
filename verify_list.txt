@@ -1,0 +1,16 @@
+{'code': '23kg', 'name': '23勘工（有卓越班）', 'emoji': '📚', 'school': '海洋地球科学学院', 'year': '2023'},
+{'code': '23dz', 'name': '23地质（统一班级）', 'emoji': '🗺️', 'school': '海洋地球科学学院', 'year': '2023'},
+{'code': '23dx', 'name': '23地信（统一班级）', 'emoji': '🛰️', 'school': '海洋地球科学学院', 'year': '2023'},
+{'code': '24kg', 'name': '24勘工（卓越工程师）', 'emoji': '⚙️', 'school': '海洋地球科学学院', 'year': '2024'},
+{'code': '24hjgc', 'name': '24环境工程', 'emoji': '🌿', 'school': '环境科学与工程学院', 'year': '2024'},
+{'code': '24hjkx', 'name': '24环境科学', 'emoji': '🌱', 'school': '环境科学与工程学院', 'year': '2024'},
+{'code': '24kuaijiACCA', 'name': '24会计学(ACCA)', 'emoji': '💼', 'school': '管理学院', 'year': '2024'},
+{'code': '24kuaiji', 'name': '24会计学', 'emoji': '📊', 'school': '管理学院', 'year': '2024'},
+...
+{'code': '24cb', 'name': '24船舶与海洋工程', 'emoji': '🚢', 'school': '工程学院', 'year': '2024'},
+{'code': '24lj', 'name': '24轮机工程', 'emoji': '⚙️', 'school': '工程学院', 'year': '2024'},
+{'code': 'custom', 'name': '其他专业（若想加入到系统中请联系我）', 'emoji': '⚡', 'school': '其他', 'year': ''},
+# {'code': '24dz', 'name': '24地质', 'emoji': '🌋', 'school': '未分类', 'year': '2024'},
+# {'code': '24dx', 'name': '24地信', 'emoji': '🛸', 'school': '未分类', 'year': '2024'},
+
+Total: 83
