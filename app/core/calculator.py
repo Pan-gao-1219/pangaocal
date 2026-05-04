@@ -364,7 +364,7 @@ class StudentGradeCalculator:
             return value
 
     # ============ 课程分类（完全不变） ============
-    def classify_course(self, row):
+    def classify_course(self, row, student_class=None):
         """课程分类 - 根据当前专业配置的选修课列表"""
         course_name = ''
         course_code = ''
@@ -380,7 +380,7 @@ class StudentGradeCalculator:
         if not self.current_major:
             return self._classify_course_legacy(course_name, course_code)
 
-        elective_courses = self.current_major.get('选修课列表', {})
+        elective_courses = self._get_elective_courses(student_class)
 
         for course_type, courses in elective_courses.items():
             for kw in courses:
@@ -392,6 +392,16 @@ class StudentGradeCalculator:
             return '通识教育选修课程'
 
         return '必修课程'
+
+    def _get_elective_courses(self, student_class=None):
+        """获取当前学生班级对应的选修课清单"""
+        if not self.current_major:
+            return {}
+
+        elective_courses = self.current_major.get('选修课列表', {})
+        if student_class in ('卓越', '普通') and student_class in elective_courses:
+            return elective_courses.get(student_class, {})
+        return elective_courses
 
     # ============ 旧分类方法（完全不变） ============
     def _classify_course_legacy(self, course_name, course_code):
@@ -694,7 +704,7 @@ class StudentGradeCalculator:
             if len(df) == 0:
                 return None
 
-        df['_课程类别'] = df.apply(self.classify_course, axis=1)
+        df['_课程类别'] = df.apply(lambda row: self.classify_course(row, student_class), axis=1)
 
         if calc_mode == '保研':
             credit_requirements = self._get_credit_requirements(student_class)
@@ -903,7 +913,7 @@ class StudentGradeCalculator:
 
         df['_计算成绩'] = df.apply(self._convert_score, axis=1)
         df['_学分'] = df.apply(self._get_credit, axis=1)
-        df['_课程类别'] = df.apply(self.classify_course, axis=1)
+        df['_课程类别'] = df.apply(lambda row: self.classify_course(row, student_class), axis=1)
         df['_是否补考'] = df.apply(self._is_makeup_exam, axis=1)
         df['_处理说明'] = df.apply(self._get_course_processing_note, axis=1)
 
@@ -955,10 +965,7 @@ class StudentGradeCalculator:
 
             classification_data = []
 
-            if self.current_major and not self.has_excellent_class:
-                credit_req = self.current_major['学分要求']
-            else:
-                credit_req = self.class_credit_requirements.get(student_class, {})
+            credit_req = self._get_credit_requirements(student_class)
 
             for _, row in df.iterrows():
                 if pd.notna(row['_计算成绩']):
