@@ -61,6 +61,7 @@ class StudentGradeCalculator:
             '学分': ['学分', 'credit', 'credits'],
             '总成绩': ['总成绩', '成绩', 'score', 'grade', '总评成绩', 'final score', '综合成绩', '综合'],  # ← 加这两个
             '取得方式': ['取得方式', '修读方式', 'exam type', 'acquire', '考试类型'],
+            '修读类型': ['修读类型', '修读类别', 'course attempt type'],
             '成绩标志': ['成绩标志', '标志', 'flag', 'status', '考试状态'],
             '学年学期': ['学年学期', '学期', '学年', 'semester', 'term', 'academic year'],
             '课程名称': ['课程名称', '课程名', 'course', 'course name'],
@@ -255,6 +256,9 @@ class StudentGradeCalculator:
             flag_col = self.column_mapping['成绩标志']
             score_flag = str(row[flag_col]) if pd.notna(row[flag_col]) else ''
 
+        if self._is_retake_record(row):
+            return None
+
         if '旷考' in score_flag or '缺考' in score_flag:
             return None
         if '缓考' in score_flag and '缓考取得' not in exam_type:
@@ -283,6 +287,24 @@ class StudentGradeCalculator:
             return float(score_raw)
         except:
             return None
+
+    def _get_attempt_text(self, row):
+        """获取修读/取得方式文本，用于判断初修、补考、重修"""
+        parts = []
+        for field in ['修读类型', '取得方式']:
+            col = self.column_mapping.get(field)
+            if col and pd.notna(row.get(col)):
+                parts.append(str(row[col]))
+        return ' '.join(parts)
+
+    def _is_retake_record(self, row):
+        """重修成绩不参与计算"""
+        return '重修' in self._get_attempt_text(row)
+
+    def _is_makeup_record(self, row):
+        """判断是否为初修后的补考记录"""
+        text = self._get_attempt_text(row)
+        return '补考' in text and '重修' not in text
 
     # ============ 获取学号（完全不变） ============
     def _get_student_id(self, row):
@@ -433,7 +455,6 @@ class StudentGradeCalculator:
             name_col = self.column_mapping['课程名称']
             df['_课程标识'] += df[name_col].astype(str)
 
-        acquire_col = self.column_mapping.get('取得方式', None)
         courses_to_drop = set()
 
         for course_id, course_group in df.groupby('_课程标识'):
@@ -444,11 +465,11 @@ class StudentGradeCalculator:
                 original_idx = None
 
                 for idx, row in course_group.iterrows():
-                    exam_type = ''
-                    if acquire_col and pd.notna(row.get(acquire_col)):
-                        exam_type = str(row[acquire_col])
+                    if self._is_retake_record(row):
+                        courses_to_drop.add(idx)
+                        continue
 
-                    is_makeup = '补考' in exam_type and '初修' not in exam_type
+                    is_makeup = self._is_makeup_record(row)
 
                     if is_makeup:
                         has_makeup = True
@@ -473,13 +494,9 @@ class StudentGradeCalculator:
     # ============ 判断是否为补考（完全不变） ============
     def _is_makeup_exam(self, row):
         """判断是否为补考"""
-        if '取得方式' not in self.column_mapping:
-            return '否'
-        acquire_col = self.column_mapping['取得方式']
-        if pd.isna(row[acquire_col]):
-            return '否'
-        exam_type = str(row[acquire_col])
-        if '补考' in exam_type and '初修' not in exam_type:
+        if self._is_retake_record(row):
+            return '否（重修不计）'
+        if self._is_makeup_record(row):
             return '是（补考）'
         return '否'
 
@@ -493,6 +510,9 @@ class StudentGradeCalculator:
         score_raw = row[score_col]
         converted = row['_计算成绩'] if '_计算成绩' in row else None
 
+        if self._is_retake_record(row):
+            return '重修成绩不参与计算，按初修/初修补考规则处理'
+
         if pd.isna(converted):
             return '成绩无效（旷考/缺考/缓考未取得）'
 
@@ -503,15 +523,11 @@ class StudentGradeCalculator:
                 if key in score_raw:
                     return f'等级制换算：{score_raw}→{converted}分'
 
-        if '取得方式' in self.column_mapping:
-            acquire_col = self.column_mapping['取得方式']
-            if pd.notna(row.get(acquire_col)):
-                exam_type = str(row[acquire_col])
-                if '补考' in exam_type and '初修' not in exam_type:
-                    if converted == 60:
-                        return f'补考通过，成绩记60分'
-                    else:
-                        return f'补考未通过，保留原始成绩{converted}分'
+        if self._is_makeup_record(row):
+            if converted == 60:
+                return f'初修补考通过，成绩记60分'
+            else:
+                return f'初修补考未通过，不采用补考成绩，保留初修成绩'
 
         return f'原始成绩{score_raw}→{converted}分'
 
@@ -553,31 +569,31 @@ class StudentGradeCalculator:
             name_col = self.column_mapping['课程名称']
             df['_课程标识'] += df[name_col].astype(str)
 
-        acquire_col = self.column_mapping.get('取得方式', None)
-
         for course_id, course_group in df.groupby('_课程标识'):
             if len(course_group) > 1:
                 has_makeup = False
                 makeup_records = []
                 original_records = []
+                retake_records = []
 
                 for idx, row in course_group.iterrows():
-                    exam_type = ''
-                    if acquire_col and pd.notna(row.get(acquire_col)):
-                        exam_type = str(row[acquire_col])
-
-                    is_makeup = '补考' in exam_type and '初修' not in exam_type
+                    attempt_text = self._get_attempt_text(row)
+                    is_retake = self._is_retake_record(row)
+                    is_makeup = self._is_makeup_record(row)
 
                     record = {
                         '课程标识': course_id,
                         '课程名称': row[self.column_mapping['课程名称']] if '课程名称' in self.column_mapping else '',
-                        '考试类型': exam_type if exam_type else '初修',
+                        '考试类型': attempt_text if attempt_text else '初修',
                         '原始成绩': row[self.column_mapping['总成绩']] if '总成绩' in self.column_mapping else '',
                         '换算后成绩': row['_计算成绩'] if '_计算成绩' in row else '',
                         '处理结果': ''
                     }
 
-                    if is_makeup:
+                    if is_retake:
+                        record['处理结果'] = '重修成绩不参与计算，按初修/初修补考规则处理'
+                        retake_records.append(record)
+                    elif is_makeup:
                         has_makeup = True
                         makeup_records.append(record)
                     else:
@@ -586,9 +602,9 @@ class StudentGradeCalculator:
                 if has_makeup and makeup_records:
                     for record in makeup_records:
                         if record['换算后成绩'] >= 60:
-                            record['处理结果'] = '补考通过，成绩计60分，初修成绩不参与计算'
+                            record['处理结果'] = '初修补考通过，成绩计60分'
                         else:
-                            record['处理结果'] = '补考未通过，保留此补考成绩'
+                            record['处理结果'] = '初修补考未通过，不采用补考成绩'
 
                     for record in original_records:
                         if makeup_records[0]['换算后成绩'] >= 60:
@@ -598,6 +614,7 @@ class StudentGradeCalculator:
 
                     duplicate_records.extend(makeup_records)
                     duplicate_records.extend(original_records)
+                duplicate_records.extend(retake_records)
 
         return duplicate_records
 
@@ -606,9 +623,9 @@ class StudentGradeCalculator:
         """获取重复课程处理规则描述"""
         return """
         1. 存在补考记录时：
-           - 若补考成绩≥60分，则按60分计入，初修成绩无效
-           - 若补考成绩<60分，则保留补考成绩，初修成绩无效
-        2. 无补考记录时，取成绩最高的一次
+           - 若初修补考成绩≥60分，则按60分计入，初修成绩不再参与
+           - 若初修补考成绩<60分，则不采用补考成绩，保留初修成绩
+        2. 重修成绩不参与计算，只按初修/初修补考规则处理
         3. 缓考且取得成绩的，按正常成绩计算
         """
 
@@ -616,6 +633,9 @@ class StudentGradeCalculator:
     def _get_course_processing_note(self, row):
         """获取课程处理说明（用于明细表）"""
         notes = []
+
+        if self._is_retake_record(row):
+            return '重修成绩不参与计算，按初修/初修补考规则处理'
 
         if pd.isna(row['_计算成绩']):
             if '成绩标志' in self.column_mapping:
@@ -630,15 +650,11 @@ class StudentGradeCalculator:
             notes.append('不参与计算')
             return '；'.join(notes)
 
-        if '取得方式' in self.column_mapping:
-            acquire_col = self.column_mapping['取得方式']
-            if pd.notna(row.get(acquire_col)):
-                exam_type = str(row[acquire_col])
-                if '补考' in exam_type and '初修' not in exam_type:
-                    if row['_计算成绩'] == 60:
-                        notes.append('补考通过，计60分')
-                    else:
-                        notes.append(f'补考未过，保留{row["_计算成绩"]}分')
+        if self._is_makeup_record(row):
+            if row['_计算成绩'] == 60:
+                notes.append('初修补考通过，计60分')
+            else:
+                notes.append('初修补考未过，不采用补考成绩')
 
         score_col = self.column_mapping.get('总成绩')
         if score_col and isinstance(row[score_col], str):
@@ -880,6 +896,8 @@ class StudentGradeCalculator:
             original_columns.append(self.column_mapping['总成绩'])
         if '取得方式' in self.column_mapping:
             original_columns.append(self.column_mapping['取得方式'])
+        if '修读类型' in self.column_mapping:
+            original_columns.append(self.column_mapping['修读类型'])
         if '成绩标志' in self.column_mapping:
             original_columns.append(self.column_mapping['成绩标志'])
 
@@ -1042,7 +1060,7 @@ class StudentGradeCalculator:
                 ['成绩换算规则', '1. 等级制成绩换算：优→90、良→80、中→70、合格→60、不合格→0、通过→85、不通过→0'],
                 ['', '2. 补考成绩：补考通过计60分，不通过保留原始成绩'],
                 ['', '3. 无效成绩：旷考、缺考、缓考未取得等情况不计入'],
-                ['重复课程处理', f'同一课程多次考试，取成绩最高的有效成绩，{self._get_duplicate_rule_description()}'],
+                ['重复课程处理', f'同一课程存在初修/补考/重修记录时，{self._get_duplicate_rule_description()}'],
                 ['课程分类规则', '学科基础课程：科学计算语言与编程、Python程序设计与实践、海洋地质学概论等'],
                 ['', '专业知识课程：地球物理测井、油气地质学、工程与环境地球物理等'],
                 ['', '工作技能课程：地球物理技能训练、地球物理软件设计实习、工程实践'],
