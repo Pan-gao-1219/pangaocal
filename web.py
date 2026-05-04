@@ -1586,10 +1586,9 @@ def main():
                                                 st.write(f"- {f}")
 
                                     # 显示7-Zip检测提示
-                                    try:
-                                        subprocess.run(['7z', '--help'], capture_output=True, check=True)
+                                    if calc._find_7zip_executable():
                                         st.info("✅ 使用7-Zip AES-256加密，安全性高")
-                                    except:
+                                    else:
                                         st.warning("⚠️ 未检测到7-Zip，使用基础加密，建议安装7-Zip获得更好的加密效果")
 
                             except Exception as e:

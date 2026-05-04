@@ -1737,16 +1737,13 @@ class StudentGradeCalculator:
         """
         import os
         import pandas as pd
-        import subprocess
         import zipfile
         from io import BytesIO
 
         # 检查7-Zip是否可用
-        try:
-            subprocess.run(['7z', '--help'], capture_output=True, check=True)
-            has_7zip = True
-        except:
-            has_7zip = False
+        seven_zip_path = self._find_7zip_executable()
+        has_7zip = seven_zip_path is not None
+        if not has_7zip:
             st.warning("⚠️ 未检测到7-Zip，将使用Python内置的ZIP加密（安全性较低）")
 
         try:
@@ -1806,7 +1803,7 @@ class StudentGradeCalculator:
                 try:
                     if has_7zip:
                         # 使用7-Zip创建加密压缩包
-                        success = self._create_7z_encrypted_zip(source_path, zip_path, password)
+                        success = self._create_7z_encrypted_zip(source_path, zip_path, password, seven_zip_path)
                     else:
                         # 使用Python内置的ZIP加密（简单密码保护）
                         success = self._create_python_encrypted_zip(source_path, zip_path, password)
@@ -1832,12 +1829,39 @@ class StudentGradeCalculator:
 
         return final_zip_buffer, success_count, failed_files
 
-    def _create_7z_encrypted_zip(self, source_file, zip_path, password):
+    def _find_7zip_executable(self):
+        """查找7-Zip程序，兼容未加入PATH的Windows默认安装路径"""
+        import os
+        import shutil
+        import subprocess
+
+        candidates = [
+            shutil.which('7z'),
+            shutil.which('7za'),
+            r'C:\Program Files\7-Zip\7z.exe',
+            r'C:\Program Files (x86)\7-Zip\7z.exe',
+        ]
+
+        for path in candidates:
+            if not path:
+                continue
+            if os.path.exists(path) or shutil.which(path):
+                try:
+                    subprocess.run([path, '--help'], capture_output=True, check=True)
+                    return path
+                except Exception:
+                    continue
+        return None
+
+    def _create_7z_encrypted_zip(self, source_file, zip_path, password, seven_zip_path=None):
         """使用7-Zip创建加密压缩包"""
+        import subprocess
+
+        seven_zip_path = seven_zip_path or self._find_7zip_executable() or '7z'
         try:
             # 尝试AES-256加密
             cmd = [
-                '7z', 'a',
+                seven_zip_path, 'a',
                 '-tzip',
                 f'-p{password}',
                 '-mem=AES256',
@@ -1850,7 +1874,7 @@ class StudentGradeCalculator:
             # 如果AES失败，尝试传统加密
             try:
                 cmd = [
-                    '7z', 'a',
+                    seven_zip_path, 'a',
                     '-tzip',
                     f'-p{password}',
                     zip_path,
