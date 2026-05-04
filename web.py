@@ -371,6 +371,17 @@ def main():
 
             st.success(f"✅ 加载数据成功，共 {len(calc.df)} 条成绩记录")
 
+            # 上传文件会重建计算器对象，因此必须把已选择的专业重新应用到新对象上。
+            # 否则卓越班名单会丢失，导致所有学生都被显示为普通班。
+            if st.session_state.major_code:
+                success_major, major_name = calc.set_major(st.session_state.major_code)
+                if success_major:
+                    st.session_state.major_name = major_name
+                    st.session_state.has_excellent_class = calc.has_excellent_class
+                    st.session_state.excellent_students = calc.excellent_students
+                    st.session_state.current_major = calc.current_major
+                    st.session_state.calc = calc
+
             # 数据预览（对应原preview_data）
             with st.expander("👁️ 数据预览（前3行）", expanded=True):
                 preview_cols = ['学号', '姓名', '课程名称', '学分', '总成绩', '取得方式']
@@ -437,6 +448,8 @@ def main():
                             st.session_state.excellent_students = calc.excellent_students
                             st.session_state.current_major = calc.current_major
                             st.session_state.calc = calc
+                            st.session_state.result_df = None
+                            st.session_state.excel_buffer = None
                             st.session_state.just_selected_major = True
                         st.rerun()
 
@@ -471,6 +484,8 @@ def main():
                         st.session_state.excellent_students = calc.excellent_students
                         st.session_state.current_major = calc.current_major
                         st.session_state.calc = calc
+                        st.session_state.result_df = None
+                        st.session_state.excel_buffer = None
                         st.session_state.just_selected_major = True
                     st.rerun()
 
@@ -1002,6 +1017,16 @@ def main():
     if st.button("🎯 开始计算", type="primary", use_container_width=True):
 
         with st.spinner("正在计算成绩，请稍候..."):
+
+            # 计算前再次同步专业配置，避免页面刷新/上传文件后calc对象丢失卓越班名单。
+            if st.session_state.major_code:
+                success_major, major_name = calc.set_major(st.session_state.major_code)
+                if success_major:
+                    st.session_state.major_name = major_name
+                    st.session_state.has_excellent_class = calc.has_excellent_class
+                    st.session_state.excellent_students = calc.excellent_students
+                    st.session_state.current_major = calc.current_major
+                    st.session_state.calc = calc
 
             # 注入通识课规则
             calc.tongshi_rule = st.session_state.get('tongshi_rule', '不设限')
