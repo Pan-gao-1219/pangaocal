@@ -1029,14 +1029,13 @@ class StudentGradeCalculator:
                     ['保留5位有效数字', self.format_significant_digits(avg_score, 5)]
                 ], columns=['项目', '数值'])
 
-                with pd.ExcelWriter(file_path, engine='openpyxl', mode='a' if os.path.exists(file_path) else 'w') as writer:
-                    process_df.to_excel(writer, sheet_name='加权平均计算', index=False)
-                    wb = writer.book
-                    ws = wb['加权平均计算']
-                    ws.append([])
-                    ws.append(['=== 成绩汇总 ===', '', '', '', '', ''])
-                    for row in dataframe_to_rows(summary, index=False, header=True):
-                        ws.append(row)
+                process_df.to_excel(writer, sheet_name='加权平均计算', index=False)
+                wb = writer.book
+                ws = wb['加权平均计算']
+                ws.append([])
+                ws.append(['=== 成绩汇总 ===', '', '', '', '', ''])
+                for row in dataframe_to_rows(summary, index=False, header=True):
+                    ws.append(row)
 
             rules = [
                 ['规则类别', '详细说明'],
