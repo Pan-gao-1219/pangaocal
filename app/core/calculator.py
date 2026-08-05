@@ -448,53 +448,87 @@ class StudentGradeCalculator:
         else:
             return self.current_major['学分要求']
 
-    # ============ 处理重复课程（完全不变） ============
-    def _handle_duplicate_courses(self, df):
-        """处理同一课程多次考试的情况（补考）"""
-        has_course_id = '课程编号' in self.column_mapping
-        has_course_name = '课程名称' in self.column_mapping
+    # ============ 处理重复课程 ============
+    def _get_course_identity(self, row):
+        """生成稳定的课程标识：优先课程号，缺失时回退到课程名。"""
+        for field, prefix in [('课程编号', '编号'), ('课程名称', '名称')]:
+            col = self.column_mapping.get(field)
+            if not col or pd.isna(row.get(col)):
+                continue
 
-        if not (has_course_id or has_course_name):
+            value = row[col]
+            if isinstance(value, float) and value.is_integer():
+                value = int(value)
+            normalized = ''.join(str(value).strip().split()).casefold()
+            if normalized and normalized not in {'nan', 'none', 'nat'}:
+                return f'{prefix}:{normalized}'
+
+        return ''
+
+    def _get_duplicate_decisions(self, course_group):
+        """返回同一课程每条记录的处理决定，供计算和明细共同使用。"""
+        decisions = {}
+        retake_indices = []
+        makeup_indices = []
+        original_indices = []
+
+        for idx, row in course_group.iterrows():
+            if self._is_retake_record(row):
+                retake_indices.append(idx)
+            elif self._is_makeup_record(row):
+                makeup_indices.append(idx)
+            else:
+                original_indices.append(idx)
+
+        for idx in retake_indices:
+            decisions[idx] = ('drop', None, '重修成绩不参与计算，按初修/初修补考规则处理')
+
+        passing_makeups = [
+            idx for idx in makeup_indices
+            if pd.notna(course_group.loc[idx, '_计算成绩'])
+            and float(course_group.loc[idx, '_计算成绩']) >= 60
+        ]
+
+        if passing_makeups:
+            kept_idx = passing_makeups[0]
+            decisions[kept_idx] = ('keep', 60.0, '初修补考通过，成绩计60分')
+            for idx in makeup_indices:
+                if idx != kept_idx:
+                    decisions[idx] = ('drop', None, '重复补考记录，不重复计入')
+            for idx in original_indices:
+                decisions[idx] = ('drop', None, '初修成绩，因补考通过不参与计算')
+            return decisions
+
+        for idx in makeup_indices:
+            decisions[idx] = ('drop', None, '初修补考未通过，不采用补考成绩')
+
+        if original_indices:
+            # 教务导出偶尔会把同一课程号的再次修读仍标成“初修”。
+            # 此时按源表顺序保留第一条有效初修记录，避免学分被重复累计。
+            kept_idx = original_indices[0]
+            decisions[kept_idx] = ('keep', None, '保留第一条有效初修成绩')
+            for idx in original_indices[1:]:
+                decisions[idx] = ('drop', None, '同一课程号重复的初修记录，不重复计入')
+
+        return decisions
+
+    def _handle_duplicate_courses(self, df):
+        """处理同一课程的初修、补考、重修及误标重复记录。"""
+        if not any(field in self.column_mapping for field in ('课程编号', '课程名称')):
             return set()
 
-        df['_课程标识'] = ''
-        if has_course_id:
-            id_col = self.column_mapping['课程编号']
-            df['_课程标识'] += df[id_col].astype(str) + '_'
-        if has_course_name:
-            name_col = self.column_mapping['课程名称']
-            df['_课程标识'] += df[name_col].astype(str)
-
+        df['_课程标识'] = df.apply(self._get_course_identity, axis=1)
         courses_to_drop = set()
 
-        for course_id, course_group in df.groupby('_课程标识'):
-            if len(course_group) > 1:
-                has_makeup = False
-                makeup_idx = None
-                makeup_score = None
-                original_idx = None
-
-                for idx, row in course_group.iterrows():
-                    if self._is_retake_record(row):
-                        courses_to_drop.add(idx)
-                        continue
-
-                    is_makeup = self._is_makeup_record(row)
-
-                    if is_makeup:
-                        has_makeup = True
-                        makeup_idx = idx
-                        makeup_score = row['_计算成绩']
-                    else:
-                        original_idx = idx
-
-                if has_makeup and makeup_idx is not None:
-                    if makeup_score >= 60:
-                        df.loc[makeup_idx, '_计算成绩'] = 60.0
-                        if original_idx is not None:
-                            courses_to_drop.add(original_idx)
-                    else:
-                        courses_to_drop.add(makeup_idx)
+        identified_df = df[df['_课程标识'] != '']
+        for _, course_group in identified_df.groupby('_课程标识', sort=False):
+            if len(course_group) <= 1:
+                continue
+            for idx, (action, score, _) in self._get_duplicate_decisions(course_group).items():
+                if action == 'drop':
+                    courses_to_drop.add(idx)
+                elif score is not None:
+                    df.loc[idx, '_计算成绩'] = score
 
         if courses_to_drop:
             df.drop(index=courses_to_drop, inplace=True)
@@ -559,72 +593,38 @@ class StudentGradeCalculator:
 
         return f'{student_class}班{course_type}需择优计入{required}学分'
 
-    # ============ 分析重复课程（完全不变） ============
+    # ============ 分析重复课程 ============
     def _analyze_duplicate_courses(self, df):
-        """分析重复课程处理情况"""
+        """生成与实际去重逻辑一致的重复课程处理明细。"""
         duplicate_records = []
 
-        has_course_id = '课程编号' in self.column_mapping
-        has_course_name = '课程名称' in self.column_mapping
-
-        if not (has_course_id or has_course_name):
+        if not any(field in self.column_mapping for field in ('课程编号', '课程名称')):
             return duplicate_records
 
         df = df.copy()
-        df['_课程标识'] = ''
-        if has_course_id:
-            id_col = self.column_mapping['课程编号']
-            df['_课程标识'] += df[id_col].astype(str) + '_'
-        if has_course_name:
-            name_col = self.column_mapping['课程名称']
-            df['_课程标识'] += df[name_col].astype(str)
+        df['_课程标识'] = df.apply(self._get_course_identity, axis=1)
 
-        for course_id, course_group in df.groupby('_课程标识'):
-            if len(course_group) > 1:
-                has_makeup = False
-                makeup_records = []
-                original_records = []
-                retake_records = []
+        identified_df = df[df['_课程标识'] != '']
+        for course_id, course_group in identified_df.groupby('_课程标识', sort=False):
+            if len(course_group) <= 1:
+                continue
 
-                for idx, row in course_group.iterrows():
-                    attempt_text = self._get_attempt_text(row)
-                    is_retake = self._is_retake_record(row)
-                    is_makeup = self._is_makeup_record(row)
-
-                    record = {
-                        '课程标识': course_id,
-                        '课程名称': row[self.column_mapping['课程名称']] if '课程名称' in self.column_mapping else '',
-                        '考试类型': attempt_text if attempt_text else '初修',
-                        '原始成绩': row[self.column_mapping['总成绩']] if '总成绩' in self.column_mapping else '',
-                        '换算后成绩': row['_计算成绩'] if '_计算成绩' in row else '',
-                        '处理结果': ''
-                    }
-
-                    if is_retake:
-                        record['处理结果'] = '重修成绩不参与计算，按初修/初修补考规则处理'
-                        retake_records.append(record)
-                    elif is_makeup:
-                        has_makeup = True
-                        makeup_records.append(record)
-                    else:
-                        original_records.append(record)
-
-                if has_makeup and makeup_records:
-                    for record in makeup_records:
-                        if record['换算后成绩'] >= 60:
-                            record['处理结果'] = '初修补考通过，成绩计60分'
-                        else:
-                            record['处理结果'] = '初修补考未通过，不采用补考成绩'
-
-                    for record in original_records:
-                        if makeup_records[0]['换算后成绩'] >= 60:
-                            record['处理结果'] = '初修成绩，因补考通过不参与计算'
-                        else:
-                            record['处理结果'] = '初修成绩，保留参与计算'
-
-                    duplicate_records.extend(makeup_records)
-                    duplicate_records.extend(original_records)
-                duplicate_records.extend(retake_records)
+            decisions = self._get_duplicate_decisions(course_group)
+            for idx, row in course_group.iterrows():
+                _, score_override, reason = decisions.get(
+                    idx, ('keep', None, '保留参与计算')
+                )
+                converted_score = row.get('_计算成绩', '')
+                if score_override is not None:
+                    converted_score = score_override
+                duplicate_records.append({
+                    '课程标识': course_id,
+                    '课程名称': row[self.column_mapping['课程名称']] if '课程名称' in self.column_mapping else '',
+                    '考试类型': self._get_attempt_text(row) or '初修',
+                    '原始成绩': row[self.column_mapping['总成绩']] if '总成绩' in self.column_mapping else '',
+                    '换算后成绩': converted_score,
+                    '处理结果': reason
+                })
 
         return duplicate_records
 
@@ -637,6 +637,7 @@ class StudentGradeCalculator:
            - 若初修补考成绩<60分，则不采用补考成绩，保留初修成绩
         2. 重修成绩不参与计算，只按初修/初修补考规则处理
         3. 缓考且取得成绩的，按正常成绩计算
+        4. 同一课程号存在多条“初修”记录时，只保留源表中的第一条有效记录
         """
 
     # ============ 课程处理说明（完全不变） ============
@@ -917,7 +918,11 @@ class StudentGradeCalculator:
         df['_是否补考'] = df.apply(self._is_makeup_exam, axis=1)
         df['_处理说明'] = df.apply(self._get_course_processing_note, axis=1)
 
-        duplicate_record = self._analyze_duplicate_courses(df)
+        # 分类、折算和加权计算必须与正式排名使用同一批有效记录。
+        processed_df = df.dropna(subset=['_计算成绩']).copy()
+        processed_df = processed_df[processed_df['_计算成绩'] > 0].copy()
+        duplicate_record = self._analyze_duplicate_courses(processed_df)
+        self._handle_duplicate_courses(processed_df)
 
         file_name = f"{student_id}_{student_name}_{student_class}班_计算明细.xlsx"
         file_path = os.path.join(output_dir, file_name)
@@ -929,7 +934,7 @@ class StudentGradeCalculator:
                 ['班级类型', student_class],
                 ['计算模式', self.calc_mode],
                 ['课程总数', len(df)],
-                ['有效成绩课程数', df['_计算成绩'].notna().sum()],
+                ['有效成绩课程数', len(processed_df)],
                 ['生成时间', datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')]
             ], columns=['项目', '内容'])
             info_df.to_excel(writer, sheet_name='基本信息', index=False)
@@ -967,22 +972,21 @@ class StudentGradeCalculator:
 
             credit_req = self._get_credit_requirements(student_class)
 
-            for _, row in df.iterrows():
-                if pd.notna(row['_计算成绩']):
-                    classification_data.append({
-                        '课程名称': row[self.column_mapping['课程名称']] if '课程名称' in self.column_mapping else '',
-                        '课程类别': row['_课程类别'],
-                        '学分': row['_学分'],
-                        '成绩': row['_计算成绩'],
-                        '是否选修课': '是' if row['_课程类别'] in credit_req else '否',
-                        '学分计入': '是',
-                        '折算说明': self._get_credit_conversion_note(row, student_class)
-                    })
+            for _, row in processed_df.iterrows():
+                classification_data.append({
+                    '课程名称': row[self.column_mapping['课程名称']] if '课程名称' in self.column_mapping else '',
+                    '课程类别': row['_课程类别'],
+                    '学分': row['_学分'],
+                    '成绩': row['_计算成绩'],
+                    '是否选修课': '是' if row['_课程类别'] in credit_req else '否',
+                    '学分计入': '是',
+                    '折算说明': self._get_credit_conversion_note(row, student_class)
+                })
 
             if classification_data:
                 class_df = pd.DataFrame(classification_data)
 
-                if self.calc_mode == '保研' and credit_req:
+                if self.calc_mode == '保研':
                     final_selected = []
 
                     for course_type, group in class_df[class_df['是否选修课'] == '是'].groupby('课程类别'):
@@ -1019,13 +1023,54 @@ class StudentGradeCalculator:
                         non_elective['折算说明'] = '必修课程，全部计入'
                         class_df = pd.concat([processed_class_df, non_elective], ignore_index=True)
 
+                    # 通识课使用与正式排名相同的独立上限和折算规则。
+                    tongshi_mask = class_df['课程类别'] == '通识教育选修课程'
+                    if tongshi_mask.any():
+                        tongshi = class_df[tongshi_mask].sort_values('成绩', ascending=False).copy()
+                        non_tongshi = class_df[~tongshi_mask].copy()
+                        rule = self.tongshi_rule
+                        limit = self.tongshi_credit_limit
+                        total_credits = 0.0
+
+                        for idx, row in tongshi.iterrows():
+                            credit = float(row['学分'])
+                            if rule == '不设限':
+                                tongshi.loc[idx, '学分计入'] = '是（全部计入）'
+                                tongshi.loc[idx, '折算说明'] = '通识课不设限，全部计入'
+                            elif total_credits >= limit:
+                                tongshi.loc[idx, '学分计入'] = '否'
+                                tongshi.loc[idx, '折算说明'] = f'通识课已达到{limit}学分上限'
+                            elif rule == '折算':
+                                counted_credit = min(credit, limit - total_credits)
+                                tongshi.loc[idx, '学分'] = counted_credit
+                                total_credits += counted_credit
+                                if counted_credit < credit:
+                                    tongshi.loc[idx, '学分计入'] = '是（部分计入）'
+                                    tongshi.loc[idx, '折算说明'] = (
+                                        f'通识课超额，仅计入{counted_credit:.1f}学分（原{credit}学分）'
+                                    )
+                                else:
+                                    tongshi.loc[idx, '学分计入'] = '是（全部计入）'
+                                    tongshi.loc[idx, '折算说明'] = '通识课按成绩择优计入'
+                            elif total_credits + credit <= limit:
+                                total_credits += credit
+                                tongshi.loc[idx, '学分计入'] = '是（全部计入）'
+                                tongshi.loc[idx, '折算说明'] = '通识课按成绩择优整门计入'
+                            else:
+                                tongshi.loc[idx, '学分计入'] = '否'
+                                tongshi.loc[idx, '折算说明'] = (
+                                    f'整门计入将超过{limit}学分上限，此课程不参与计算'
+                                )
+
+                        class_df = pd.concat([non_tongshi, tongshi], ignore_index=True)
+
                 class_df.to_excel(writer, sheet_name='课程分类与折算', index=False)
 
             # 加权平均计算：只使用真正计入的课程（学分计入 != 否），与排名结果保持一致
             if classification_data and 'class_df' in dir():
                 counted_df = class_df[class_df['学分计入'] != '否'].copy()
             else:
-                counted_df = df[df['_计算成绩'].notna()].copy()
+                counted_df = processed_df.copy()
 
             if not counted_df.empty:
                 calc_process = []
