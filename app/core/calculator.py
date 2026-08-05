@@ -695,7 +695,9 @@ class StudentGradeCalculator:
         if len(df) == 0:
             return None
 
-        self._handle_duplicate_courses(df)
+        # 保研按课程唯一计入；综测允许同一课程的多条有效记录分别计入。
+        if calc_mode == '保研':
+            self._handle_duplicate_courses(df)
 
         if semester_filter and '学年学期' in self.column_mapping:
             sem_col = self.column_mapping['学年学期']
@@ -921,8 +923,11 @@ class StudentGradeCalculator:
         # 分类、折算和加权计算必须与正式排名使用同一批有效记录。
         processed_df = df.dropna(subset=['_计算成绩']).copy()
         processed_df = processed_df[processed_df['_计算成绩'] > 0].copy()
-        duplicate_record = self._analyze_duplicate_courses(processed_df)
-        self._handle_duplicate_courses(processed_df)
+        if self.calc_mode == '保研':
+            duplicate_record = self._analyze_duplicate_courses(processed_df)
+            self._handle_duplicate_courses(processed_df)
+        else:
+            duplicate_record = []
 
         file_name = f"{student_id}_{student_name}_{student_class}班_计算明细.xlsx"
         file_path = os.path.join(output_dir, file_name)

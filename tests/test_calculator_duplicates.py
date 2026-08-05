@@ -14,6 +14,7 @@ class DuplicateCourseTests(unittest.TestCase):
             '总成绩': '总成绩',
             '取得方式': '取得方式',
             '修读类型': '修读类型',
+            '学分': '学分',
         }
 
     @staticmethod
@@ -26,6 +27,7 @@ class DuplicateCourseTests(unittest.TestCase):
             '修读类型': attempt,
             '_计算成绩': float(score),
             '_学分': 6.0,
+            '学分': 6.0,
         }
 
     def test_duplicate_initial_records_keep_first_valid_record(self):
@@ -84,6 +86,26 @@ class DuplicateCourseTests(unittest.TestCase):
         self.assertIn('Python程序设计与实践', ordinary_courses['学科基础课程'])
         self.assertIn('海洋地球物理探测技术', ordinary_courses['专业知识课程'])
         self.assertIn('地球物理软件设计实习', ordinary_courses['工作技能课程'])
+
+    def test_comprehensive_evaluation_keeps_duplicate_valid_courses(self):
+        grades = pd.DataFrame([
+            {
+                '学号': '22040031044', '姓名': '王千寻',
+                **self._row(8401101045, '高等数学Ⅰ1', 70),
+            },
+            {
+                '学号': '22040031044', '姓名': '王千寻',
+                **self._row(8401101045, '高等数学Ⅰ1', 63.5),
+            },
+        ])
+        self.calculator.column_mapping.update({'学号': '学号', '姓名': '姓名'})
+        self.calculator.set_major('23kg')
+
+        result = self.calculator.calculate_student_gpa(grades, calc_mode='综测')
+
+        self.assertEqual(result['课程门数'], 2)
+        self.assertEqual(result['总学分'], 12)
+        self.assertEqual(result['平均成绩'], 66.75)
 
 
 if __name__ == '__main__':
