@@ -608,6 +608,17 @@ class StudentGradeCalculator:
         """低学分扣分规则仅适用于海洋地球科学学院。"""
         return self.major_school == '海洋地球科学学院'
 
+    @staticmethod
+    def _merge_summer_autumn_semester(semester):
+        """将同一年度夏季学期归并到秋季学期，用于12学分规则。"""
+        if pd.isna(semester):
+            return semester
+        semester_text = str(semester).strip()
+        if '夏季学期' in semester_text:
+            year = semester_text.replace('夏季学期', '').strip()
+            return f'{year}秋季学期'
+        return semester
+
     def _calculate_low_credit_penalty(self, student_df, semester_filter=None):
         """按学期计算通过学分不足12分的扣分及明细。"""
         if '学年学期' not in self.column_mapping:
@@ -622,6 +633,9 @@ class StudentGradeCalculator:
 
         if df.empty:
             return 0.0, []
+
+        combined_sem_col = '_综测合并学期'
+        df[combined_sem_col] = df[sem_col].apply(self._merge_summer_autumn_semester)
 
         student_id = self._get_student_id(df.iloc[0])
         student_class = self._get_student_class(student_id)
@@ -642,11 +656,11 @@ class StudentGradeCalculator:
             & (df['_学分'] > 0)
             & ~optional_mask
         ].copy()
-        passed_credits = passed.groupby(sem_col)['_学分'].sum().to_dict()
+        passed_credits = passed.groupby(combined_sem_col)['_学分'].sum().to_dict()
 
         details = []
         total_penalty = 0.0
-        for semester in df[sem_col].dropna().drop_duplicates().tolist():
+        for semester in df[combined_sem_col].dropna().drop_duplicates().tolist():
             credits = float(passed_credits.get(semester, 0.0))
             missing = max(0.0, 12.0 - credits)
             penalty = missing * 5.0
@@ -675,6 +689,9 @@ class StudentGradeCalculator:
         if df.empty:
             return 0.0, []
 
+        combined_sem_col = '_综测合并学期'
+        df[combined_sem_col] = df[sem_col].apply(self._merge_summer_autumn_semester)
+
         student_id = self._get_student_id(df.iloc[0])
         student_class = self._get_student_class(student_id)
         df['_计算成绩'] = df.apply(self._convert_score, axis=1)
@@ -697,12 +714,12 @@ class StudentGradeCalculator:
         passed_non_optional = df[passed_mask & ~optional_mask].copy()
         bonus_courses = df[passed_mask & ~optional_mask & bonus_course_mask].copy()
 
-        passed_credits = passed_non_optional.groupby(sem_col)['_学分'].sum().to_dict()
-        bonus_credits = bonus_courses.groupby(sem_col)['_学分'].sum().to_dict()
+        passed_credits = passed_non_optional.groupby(combined_sem_col)['_学分'].sum().to_dict()
+        bonus_credits = bonus_courses.groupby(combined_sem_col)['_学分'].sum().to_dict()
 
         details = []
         total_bonus = 0.0
-        for semester in df[sem_col].dropna().drop_duplicates().tolist():
+        for semester in df[combined_sem_col].dropna().drop_duplicates().tolist():
             credits = float(passed_credits.get(semester, 0.0))
             eligible_credits = float(bonus_credits.get(semester, 0.0))
             qualified = credits >= 12.0
@@ -1693,17 +1710,8 @@ class StudentGradeCalculator:
 
         sem_col = self.column_mapping['学年学期']
 
-        # ============ 1. 合并夏季学期和秋季学期 ============
-        def merge_summer_autumn(semester):
-            """合并夏季和秋季学期为同一个学年学期"""
-            s = str(semester)
-            if '夏季学期' in s:
-                year = s.replace('夏季学期', '').strip()
-                return f"{year}秋季学期"
-            return s
-
-        # 应用学期合并
-        df_calc['_合并学期'] = df_calc[sem_col].apply(merge_summer_autumn)
+        # ============ 1. 合并同一年度的夏季学期和秋季学期 ============
+        df_calc['_合并学期'] = df_calc[sem_col].apply(self._merge_summer_autumn_semester)
 
         # ============ 2. 筛选出通过的成绩（≥60分） ============
         df_passed = df_calc[df_calc['_计算成绩'] >= 60].copy()

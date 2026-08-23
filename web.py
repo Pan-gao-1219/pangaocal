@@ -984,23 +984,26 @@ def main():
             "启用“满足12学分后，必修课与限选课每学分加0.2分”规则",
             value=st.session_state.get('apply_course_credit_bonus', False),
             help=(
-                "仅适用于海洋地球科学学院；按学期判断，通过学分（不含任选课）"
+                "仅适用于海洋地球科学学院；同一年度夏季和秋季合并后判断，通过学分（不含任选课）"
                 "达到12分后，该学期必修及限选课程每学分加0.2分。"
             )
         )
         apply_low_credit_penalty = st.checkbox(
             "启用“每学期不足12学分，每缺1学分扣5分”规则",
             value=st.session_state.get('apply_low_credit_penalty', False),
-            help="仅适用于海洋地球科学学院；未勾选时不进行此项扣分。"
+            help=(
+                "仅适用于海洋地球科学学院；同一年度夏季和秋季合并计算，"
+                "未勾选时不进行此项扣分。"
+            )
         )
         if apply_low_credit_penalty:
             st.warning(
-                "已启用低学分扣分：按每学期通过学分（不含任选课）计算，"
+                "已启用低学分扣分：同一年度夏季和秋季合并后，按通过学分（不含任选课）计算，"
                 "不足12学分的部分每学分扣5分。"
             )
         if apply_course_credit_bonus:
             st.success(
-                "已启用课程学分加分：每学期达到12学分后，"
+                "已启用课程学分加分：同一年度夏季和秋季合计达到12学分后，"
                 "该学期必修课与限选课按每学分0.2分加分。"
             )
         if (

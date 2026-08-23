@@ -172,7 +172,7 @@ class DuplicateCourseTests(unittest.TestCase):
     def test_earth_sciences_course_credit_bonus_is_optional(self):
         grades = pd.DataFrame([
             {
-                '学号': '22040031044', '姓名': '王千寻', '学年学期': '2024秋季学期',
+                '学号': '22040031044', '姓名': '王千寻', '学年学期': '2024夏季学期',
                 '课程性质': '必修',
                 **self._row('B001', '高等数学Ⅰ1', 80),
             },
@@ -187,8 +187,8 @@ class DuplicateCourseTests(unittest.TestCase):
                 **self._row('B003', '任选课程', 80),
             },
         ])
-        grades.loc[0, '学分'] = 6
-        grades.loc[1, '学分'] = 6
+        grades.loc[0, '学分'] = 4
+        grades.loc[1, '学分'] = 8
         grades.loc[2, '学分'] = 2
         self.calculator.column_mapping.update({
             '学号': '学号', '姓名': '姓名', '学年学期': '学年学期',
@@ -200,12 +200,16 @@ class DuplicateCourseTests(unittest.TestCase):
             grades, calc_mode='综测', apply_course_credit_bonus=False
         )
         enabled = self.calculator.calculate_student_gpa(
-            grades, calc_mode='综测', apply_course_credit_bonus=True
+            grades,
+            calc_mode='综测',
+            apply_low_credit_penalty=True,
+            apply_course_credit_bonus=True,
         )
 
         self.assertEqual(disabled['课程学分加分'], 0)
         self.assertEqual(disabled['综测成绩'], 80)
         self.assertEqual(enabled['课程学分加分'], 2.4)
+        self.assertEqual(enabled['低学分扣分'], 0)
         self.assertEqual(enabled['综测成绩'], 82.4)
         self.assertIn('2024秋季学期：12学分，加2.4分', enabled['课程学分加分明细'])
 
