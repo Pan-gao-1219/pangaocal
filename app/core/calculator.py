@@ -46,8 +46,12 @@ class StudentGradeCalculator:
         self.major_config = MajorConfig()
         self.current_major = None
         self.major_name = None
+        self.major_school = None
         self.has_excellent_class = False
         self.excellent_students = {}
+        self.apply_low_credit_penalty = False
+        self.apply_course_credit_bonus = False
+        self.semester_filter = None
 
         # 通识课保研规则
         self.tongshi_rule = '不设限'       # '折算' | '不折算' | '不设限'
@@ -66,6 +70,7 @@ class StudentGradeCalculator:
             '学年学期': ['学年学期', '学期', '学年', 'semester', 'term', 'academic year'],
             '课程名称': ['课程名称', '课程名', 'course', 'course name'],
             '课程编号': ['课程编号', '课程代码', 'course code', 'course_id'],
+            '课程性质': ['课程性质', '课程属性', 'course nature', 'course property'],
             '开课单位': ['开课单位', '开课院系', '开课系', 'department', 'dept'],
             '绩点': ['绩点', 'gpa', 'grade point']
         }
@@ -218,6 +223,12 @@ class StudentGradeCalculator:
 
         self.current_major = major_config
         self.major_name = major_config['专业名称']
+        display_entry = next(
+            (item for item in self.major_config.get_all_majors()
+             if item.get('code') == major_code),
+            None
+        )
+        self.major_school = display_entry.get('school') if display_entry else None
         self.has_excellent_class = major_config['有卓越班']
 
         # === 确保学分要求存在 ===
@@ -593,6 +604,120 @@ class StudentGradeCalculator:
 
         return f'{student_class}班{course_type}需择优计入{required}学分'
 
+    def _low_credit_penalty_is_available(self):
+        """低学分扣分规则仅适用于海洋地球科学学院。"""
+        return self.major_school == '海洋地球科学学院'
+
+    def _calculate_low_credit_penalty(self, student_df, semester_filter=None):
+        """按学期计算通过学分不足12分的扣分及明细。"""
+        if '学年学期' not in self.column_mapping:
+            return 0.0, []
+
+        df = student_df.copy()
+        sem_col = self.column_mapping['学年学期']
+
+        if semester_filter:
+            selected = [semester_filter] if isinstance(semester_filter, str) else semester_filter
+            df = df[df[sem_col].isin(selected)]
+
+        if df.empty:
+            return 0.0, []
+
+        student_id = self._get_student_id(df.iloc[0])
+        student_class = self._get_student_class(student_id)
+        df['_计算成绩'] = df.apply(self._convert_score, axis=1)
+        df['_学分'] = df.apply(self._get_credit, axis=1)
+        df['_课程类别'] = df.apply(
+            lambda row: self.classify_course(row, student_class), axis=1
+        )
+
+        # 任选课不计入12学分门槛。优先读取成绩表的课程性质；若没有该列，
+        # 则以系统可可靠识别的通识教育选修课程作为排除项。
+        optional_mask = df['_课程类别'] == '通识教育选修课程'
+        nature_col = self.column_mapping.get('课程性质')
+        if nature_col:
+            optional_mask = optional_mask | df[nature_col].fillna('').astype(str).str.contains('任选')
+        passed = df[
+            (df['_计算成绩'] >= 60)
+            & (df['_学分'] > 0)
+            & ~optional_mask
+        ].copy()
+        passed_credits = passed.groupby(sem_col)['_学分'].sum().to_dict()
+
+        details = []
+        total_penalty = 0.0
+        for semester in df[sem_col].dropna().drop_duplicates().tolist():
+            credits = float(passed_credits.get(semester, 0.0))
+            missing = max(0.0, 12.0 - credits)
+            penalty = missing * 5.0
+            total_penalty += penalty
+            details.append({
+                '学期': semester,
+                '通过学分（不含任选课）': credits,
+                '缺少学分': missing,
+                '扣分': penalty,
+            })
+
+        return total_penalty, details
+
+    def _calculate_course_credit_bonus(self, student_df, semester_filter=None):
+        """按学期计算必修课与限选课的学分加分及明细。"""
+        if '学年学期' not in self.column_mapping:
+            return 0.0, []
+
+        df = student_df.copy()
+        sem_col = self.column_mapping['学年学期']
+
+        if semester_filter:
+            selected = [semester_filter] if isinstance(semester_filter, str) else semester_filter
+            df = df[df[sem_col].isin(selected)]
+
+        if df.empty:
+            return 0.0, []
+
+        student_id = self._get_student_id(df.iloc[0])
+        student_class = self._get_student_class(student_id)
+        df['_计算成绩'] = df.apply(self._convert_score, axis=1)
+        df['_学分'] = df.apply(self._get_credit, axis=1)
+        df['_课程类别'] = df.apply(
+            lambda row: self.classify_course(row, student_class), axis=1
+        )
+
+        optional_mask = df['_课程类别'] == '通识教育选修课程'
+        nature_col = self.column_mapping.get('课程性质')
+        if nature_col:
+            nature = df[nature_col].fillna('').astype(str)
+            optional_mask = optional_mask | nature.str.contains('任选')
+            bonus_course_mask = nature.str.contains('必修|限选')
+        else:
+            # 无课程性质列时，使用系统能够识别的非任选课程作为必修/限选课程。
+            bonus_course_mask = ~optional_mask
+
+        passed_mask = (df['_计算成绩'] >= 60) & (df['_学分'] > 0)
+        passed_non_optional = df[passed_mask & ~optional_mask].copy()
+        bonus_courses = df[passed_mask & ~optional_mask & bonus_course_mask].copy()
+
+        passed_credits = passed_non_optional.groupby(sem_col)['_学分'].sum().to_dict()
+        bonus_credits = bonus_courses.groupby(sem_col)['_学分'].sum().to_dict()
+
+        details = []
+        total_bonus = 0.0
+        for semester in df[sem_col].dropna().drop_duplicates().tolist():
+            credits = float(passed_credits.get(semester, 0.0))
+            eligible_credits = float(bonus_credits.get(semester, 0.0))
+            qualified = credits >= 12.0
+            bonus = eligible_credits * 0.2 if qualified else 0.0
+            total_bonus += bonus
+            details.append({
+                '学期': semester,
+                '通过学分（不含任选课）': credits,
+                '必修及限选学分': eligible_credits,
+                '是否达到12学分': qualified,
+                '加分': bonus,
+            })
+
+        return total_bonus, details
+
     # ============ 分析重复课程 ============
     def _analyze_duplicate_courses(self, df):
         """生成与实际去重逻辑一致的重复课程处理明细。"""
@@ -676,7 +801,9 @@ class StudentGradeCalculator:
         return '；'.join(notes) if notes else '正常成绩'
 
     # ============ 计算单个学生成绩（完全不变） ============
-    def calculate_student_gpa(self, student_df, semester_filter=None, calc_mode='保研'):
+    def calculate_student_gpa(self, student_df, semester_filter=None, calc_mode='保研',
+                              apply_low_credit_penalty=False,
+                              apply_course_credit_bonus=False):
         """计算单个学生成绩"""
         df = student_df.copy()
 
@@ -789,19 +916,73 @@ class StudentGradeCalculator:
 
         avg_score = total_weighted / total_credits
 
+        penalty_enabled = (
+            calc_mode == '综测'
+            and apply_low_credit_penalty
+            and self._low_credit_penalty_is_available()
+        )
+        low_credit_penalty = 0.0
+        penalty_details = []
+        if penalty_enabled:
+            low_credit_penalty, penalty_details = self._calculate_low_credit_penalty(
+                student_df, semester_filter
+            )
+
+        bonus_enabled = (
+            calc_mode == '综测'
+            and apply_course_credit_bonus
+            and self._low_credit_penalty_is_available()
+        )
+        course_credit_bonus = 0.0
+        bonus_details = []
+        if bonus_enabled:
+            course_credit_bonus, bonus_details = self._calculate_course_credit_bonus(
+                student_df, semester_filter
+            )
+
+        comprehensive_score = min(
+            100.0,
+            max(0.0, avg_score + course_credit_bonus - low_credit_penalty),
+        )
+
         return {
             '学号': student_id,
             '姓名': df.iloc[0]['_姓名'],
             '班级类型': student_class,
             '平均成绩': self.format_significant_digits(avg_score, 5),
+            '课程学分加分': self.format_significant_digits(course_credit_bonus, 5),
+            '低学分扣分': self.format_significant_digits(low_credit_penalty, 5),
+            '综测成绩': self.format_significant_digits(comprehensive_score, 5),
+            '课程学分加分明细': '；'.join(
+                f"{item['学期']}：{item['必修及限选学分']:g}学分，加{item['加分']:g}分"
+                for item in bonus_details if item['加分'] > 0
+            ) or '无',
+            '低学分扣分明细': '；'.join(
+                f"{item['学期']}：{item['通过学分（不含任选课）']:g}学分，扣{item['扣分']:g}分"
+                for item in penalty_details if item['扣分'] > 0
+            ) or '无',
             '总学分': self.format_significant_digits(total_credits, 5),
             '课程门数': len(df),
             '计算模式': calc_mode
         }
 
     # ============ 计算所有学生（完全不变） ============
-    def calculate_all_students(self, semester_filter=None, calc_mode='保研'):
+    def calculate_all_students(self, semester_filter=None, calc_mode='保研',
+                               apply_low_credit_penalty=False,
+                               apply_course_credit_bonus=False):
         """计算所有学生 - 统一排名"""
+        self.calc_mode = calc_mode
+        self.semester_filter = semester_filter
+        self.apply_low_credit_penalty = (
+            calc_mode == '综测'
+            and apply_low_credit_penalty
+            and self._low_credit_penalty_is_available()
+        )
+        self.apply_course_credit_bonus = (
+            calc_mode == '综测'
+            and apply_course_credit_bonus
+            and self._low_credit_penalty_is_available()
+        )
         df_calc = self.df.copy()
         df_calc['_学号'] = df_calc.apply(self._get_student_id, axis=1)
         df_calc['_姓名'] = df_calc[self.column_mapping.get('姓名')].astype(str).str.strip()
@@ -813,18 +994,25 @@ class StudentGradeCalculator:
 
         results = []
         for student_id, student_df in df_calc.groupby('_学号'):
-            res = self.calculate_student_gpa(student_df, semester_filter, calc_mode)
+            res = self.calculate_student_gpa(
+                student_df,
+                semester_filter,
+                calc_mode,
+                self.apply_low_credit_penalty,
+                self.apply_course_credit_bonus,
+            )
             if res:
                 results.append(res)
 
         result_df = pd.DataFrame(results)
 
         if not result_df.empty:
-            result_df = result_df.sort_values('平均成绩', ascending=False).reset_index(drop=True)
-            result_df['排名'] = result_df['平均成绩'].rank(method='min', ascending=False).astype(int)
+            ranking_column = '综测成绩' if calc_mode == '综测' else '平均成绩'
+            result_df = result_df.sort_values(ranking_column, ascending=False).reset_index(drop=True)
+            result_df['排名'] = result_df[ranking_column].rank(method='min', ascending=False).astype(int)
             cols = ['排名'] + [col for col in result_df.columns if col != '排名']
             result_df = result_df[cols]
-            result_df['班级内排名'] = result_df.groupby('班级类型')['平均成绩'] \
+            result_df['班级内排名'] = result_df.groupby('班级类型')[ranking_column] \
                 .rank(method='min', ascending=False) \
                 .astype(int)
 
@@ -1132,9 +1320,16 @@ class StudentGradeCalculator:
         return file_path
 
     # ============ 导出Excel（完全不变，只改输出方式） ============
-    def export_to_excel(self, output_buffer, semester_filter=None, calc_mode='保研'):
+    def export_to_excel(self, output_buffer, semester_filter=None, calc_mode='保研',
+                        apply_low_credit_penalty=False,
+                        apply_course_credit_bonus=False):
         """导出结果 - 返回BytesIO"""
-        result_df, excellent_count, normal_count = self.calculate_all_students(semester_filter, calc_mode)
+        result_df, excellent_count, normal_count = self.calculate_all_students(
+            semester_filter,
+            calc_mode,
+            apply_low_credit_penalty,
+            apply_course_credit_bonus,
+        )
 
         with pd.ExcelWriter(output_buffer, engine='openpyxl') as writer:
             result_df.to_excel(writer, sheet_name='全校成绩排名', index=False)
@@ -1142,13 +1337,15 @@ class StudentGradeCalculator:
             if not result_df.empty:
                 excellent_df = result_df[result_df['班级类型'] == '卓越'].copy()
                 if not excellent_df.empty:
-                    excellent_df = excellent_df.sort_values('平均成绩', ascending=False)
+                    ranking_column = '综测成绩' if calc_mode == '综测' else '平均成绩'
+                    excellent_df = excellent_df.sort_values(ranking_column, ascending=False)
                     excellent_df['班级排名'] = range(1, len(excellent_df) + 1)
                     excellent_df.to_excel(writer, sheet_name='卓越班级', index=False)
 
                 normal_df = result_df[result_df['班级类型'] == '普通'].copy()
                 if not normal_df.empty:
-                    normal_df = normal_df.sort_values('平均成绩', ascending=False)
+                    ranking_column = '综测成绩' if calc_mode == '综测' else '平均成绩'
+                    normal_df = normal_df.sort_values(ranking_column, ascending=False)
                     normal_df['班级排名'] = range(1, len(normal_df) + 1)
                     normal_df.to_excel(writer, sheet_name='普通班级', index=False)
 
@@ -1169,7 +1366,8 @@ class StudentGradeCalculator:
 
             config = {
                 '配置项': [
-                    '专业', '表头行', '学期筛选', '计算模式', '有效数字', '计算时间',
+                    '专业', '表头行', '学期筛选', '计算模式', '课程学分加分规则',
+                    '低学分扣分规则', '有效数字', '计算时间',
                     '卓越班级人数', '普通班级人数', '总人数',
                     '卓越-学科基础', '卓越-专业知识', '卓越-工作技能',
                     '普通-学科基础', '普通-专业知识', '普通-工作技能'
@@ -1179,6 +1377,10 @@ class StudentGradeCalculator:
                     f'第{self.header_row + 1}行',
                     str(semester_filter),
                     calc_mode,
+                    '启用（每学期达到12学分后，必修及限选课每学分加0.2分）'
+                    if self.apply_course_credit_bonus else '未启用',
+                    '启用（每学期不足12学分，每缺1学分扣5分）'
+                    if self.apply_low_credit_penalty else '未启用',
                     '5位',
                     datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                     excellent_count,

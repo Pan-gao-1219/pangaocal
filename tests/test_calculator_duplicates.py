@@ -107,6 +107,108 @@ class DuplicateCourseTests(unittest.TestCase):
         self.assertEqual(result['总学分'], 12)
         self.assertEqual(result['平均成绩'], 66.75)
 
+    def test_earth_sciences_low_credit_penalty_is_optional(self):
+        grades = pd.DataFrame([
+            {
+                '学号': '22040031044', '姓名': '王千寻', '学年学期': '2024秋季学期',
+                '课程性质': '必修',
+                **self._row('A001', '高等数学Ⅰ1', 80),
+            },
+            {
+                '学号': '22040031044', '姓名': '王千寻', '学年学期': '2024秋季学期',
+                '课程性质': '限选',
+                **self._row('A002', '大学英语Ⅰ', 80),
+            },
+            {
+                '学号': '22040031044', '姓名': '王千寻', '学年学期': '2024秋季学期',
+                '课程性质': '任选',
+                **self._row('A003', '任选课程', 80),
+            },
+        ])
+        grades.loc[0, '学分'] = 5
+        grades.loc[1, '学分'] = 5
+        grades.loc[2, '学分'] = 2
+        self.calculator.column_mapping.update({
+            '学号': '学号', '姓名': '姓名', '学年学期': '学年学期',
+            '课程性质': '课程性质',
+        })
+        self.calculator.set_major('23kg')
+
+        disabled = self.calculator.calculate_student_gpa(
+            grades, calc_mode='综测', apply_low_credit_penalty=False
+        )
+        enabled = self.calculator.calculate_student_gpa(
+            grades, calc_mode='综测', apply_low_credit_penalty=True
+        )
+
+        self.assertEqual(disabled['低学分扣分'], 0)
+        self.assertEqual(disabled['综测成绩'], 80)
+        self.assertEqual(enabled['低学分扣分'], 10)
+        self.assertEqual(enabled['综测成绩'], 70)
+        self.assertIn('2024秋季学期：10学分，扣10分', enabled['低学分扣分明细'])
+
+    def test_low_credit_penalty_cannot_apply_to_other_schools(self):
+        grades = pd.DataFrame([{
+            '学号': '23000000001', '姓名': '测试学生', '学年学期': '2024秋季学期',
+            **self._row('A001', '高等数学Ⅰ1', 80),
+        }])
+        grades.loc[0, '学分'] = 6
+        self.calculator.column_mapping.update({
+            '学号': '学号', '姓名': '姓名', '学年学期': '学年学期'
+        })
+        self.calculator.set_major('23sx')
+
+        result = self.calculator.calculate_student_gpa(
+            grades,
+            calc_mode='综测',
+            apply_low_credit_penalty=True,
+            apply_course_credit_bonus=True,
+        )
+
+        self.assertEqual(result['课程学分加分'], 0)
+        self.assertEqual(result['低学分扣分'], 0)
+        self.assertEqual(result['综测成绩'], 80)
+
+    def test_earth_sciences_course_credit_bonus_is_optional(self):
+        grades = pd.DataFrame([
+            {
+                '学号': '22040031044', '姓名': '王千寻', '学年学期': '2024秋季学期',
+                '课程性质': '必修',
+                **self._row('B001', '高等数学Ⅰ1', 80),
+            },
+            {
+                '学号': '22040031044', '姓名': '王千寻', '学年学期': '2024秋季学期',
+                '课程性质': '限选',
+                **self._row('B002', '专业限选课', 80),
+            },
+            {
+                '学号': '22040031044', '姓名': '王千寻', '学年学期': '2024秋季学期',
+                '课程性质': '任选',
+                **self._row('B003', '任选课程', 80),
+            },
+        ])
+        grades.loc[0, '学分'] = 6
+        grades.loc[1, '学分'] = 6
+        grades.loc[2, '学分'] = 2
+        self.calculator.column_mapping.update({
+            '学号': '学号', '姓名': '姓名', '学年学期': '学年学期',
+            '课程性质': '课程性质',
+        })
+        self.calculator.set_major('23kg')
+
+        disabled = self.calculator.calculate_student_gpa(
+            grades, calc_mode='综测', apply_course_credit_bonus=False
+        )
+        enabled = self.calculator.calculate_student_gpa(
+            grades, calc_mode='综测', apply_course_credit_bonus=True
+        )
+
+        self.assertEqual(disabled['课程学分加分'], 0)
+        self.assertEqual(disabled['综测成绩'], 80)
+        self.assertEqual(enabled['课程学分加分'], 2.4)
+        self.assertEqual(enabled['综测成绩'], 82.4)
+        self.assertIn('2024秋季学期：12学分，加2.4分', enabled['课程学分加分明细'])
+
 
 if __name__ == '__main__':
     unittest.main()

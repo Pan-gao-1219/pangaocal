@@ -963,9 +963,54 @@ def main():
     # 如果计算模式改变，更新session_state并重新运行
     if st.session_state.calc_mode != calc_mode:
         st.session_state.calc_mode = calc_mode
+        st.session_state.result_df = None
+        st.session_state.excel_buffer = None
         st.rerun()  # 添加这一行，确保自定义模块的显示状态更新
 
     st.info(f"✅ 已选择: {calc_mode}模式")
+
+    # 海洋地球科学学院可按本院细则选择是否启用课程加分和低学分扣分。
+    is_earth_sciences = (
+        st.session_state.get('major_school') == '海洋地球科学学院'
+    )
+    apply_low_credit_penalty = False
+    apply_course_credit_bonus = False
+    if calc_mode == '综测' and is_earth_sciences:
+        st.subheader("➕➖ 综测加扣分项（均可选）")
+        previous_bonus_setting = st.session_state.get('apply_course_credit_bonus', False)
+        previous_penalty_setting = st.session_state.get('apply_low_credit_penalty', False)
+
+        apply_course_credit_bonus = st.checkbox(
+            "启用“满足12学分后，必修课与限选课每学分加0.2分”规则",
+            value=st.session_state.get('apply_course_credit_bonus', False),
+            help=(
+                "仅适用于海洋地球科学学院；按学期判断，通过学分（不含任选课）"
+                "达到12分后，该学期必修及限选课程每学分加0.2分。"
+            )
+        )
+        apply_low_credit_penalty = st.checkbox(
+            "启用“每学期不足12学分，每缺1学分扣5分”规则",
+            value=st.session_state.get('apply_low_credit_penalty', False),
+            help="仅适用于海洋地球科学学院；未勾选时不进行此项扣分。"
+        )
+        if apply_low_credit_penalty:
+            st.warning(
+                "已启用低学分扣分：按每学期通过学分（不含任选课）计算，"
+                "不足12学分的部分每学分扣5分。"
+            )
+        if apply_course_credit_bonus:
+            st.success(
+                "已启用课程学分加分：每学期达到12学分后，"
+                "该学期必修课与限选课按每学分0.2分加分。"
+            )
+        if (
+            apply_course_credit_bonus != previous_bonus_setting
+            or apply_low_credit_penalty != previous_penalty_setting
+        ):
+            st.session_state.result_df = None
+            st.session_state.excel_buffer = None
+    st.session_state.apply_course_credit_bonus = apply_course_credit_bonus
+    st.session_state.apply_low_credit_penalty = apply_low_credit_penalty
 
     # ============ 通识课保研规则（仅保研模式显示） ============
     if calc_mode == '保研':
@@ -1042,7 +1087,9 @@ def main():
             result_df, excellent_count, normal_count = calc.export_to_excel(
                 output_buffer,
                 st.session_state.semester_filter,
-                st.session_state.calc_mode
+                st.session_state.calc_mode,
+                st.session_state.get('apply_low_credit_penalty', False),
+                st.session_state.get('apply_course_credit_bonus', False),
             )
 
             st.session_state.result_df = result_df
@@ -1080,19 +1127,26 @@ def main():
 
         st.header("📊 计算结果")
 
+        score_column = (
+            '综测成绩'
+            if st.session_state.get('calc_mode') == '综测' and '综测成绩' in result_df.columns
+            else '平均成绩'
+        )
+        score_label = '平均综测成绩' if score_column == '综测成绩' else '平均分'
+
         # 统计信息
         col1, col2, col3, col4 = st.columns(4)
 
         with col1:
             st.metric("总人数", len(result_df))
         with col2:
-            avg_score = result_df['平均成绩'].mean()
-            st.metric("平均分", f"{avg_score:.2f}")
+            avg_score = result_df[score_column].mean()
+            st.metric(score_label, f"{avg_score:.2f}")
         with col3:
-            max_score = result_df['平均成绩'].max()
+            max_score = result_df[score_column].max()
             st.metric("最高分", f"{max_score:.2f}")
         with col4:
-            min_score = result_df['平均成绩'].min()
+            min_score = result_df[score_column].min()
             st.metric("最低分", f"{min_score:.2f}")
 
         # 班级统计
@@ -1100,7 +1154,7 @@ def main():
             st.subheader("📊 班级统计")
             class_stats = result_df.groupby('班级类型').agg({
                 '学号': 'count',
-                '平均成绩': ['mean', 'max', 'min'],
+                score_column: ['mean', 'max', 'min'],
                 '总学分': 'mean'
             }).round(2)
             class_stats.columns = ['人数', '平均分', '最高分', '最低分', '平均学分']
@@ -1109,8 +1163,18 @@ def main():
         # 前10名（对应原print前10名）
         st.subheader("🏆 前10名学生")
 
-        top10 = result_df.head(10)[['排名', '姓名', '班级类型', '平均成绩', '总学分']].copy()
-        top10['平均成绩'] = top10['平均成绩'].apply(lambda x: f"{x:.2f}")
+        top10_columns = ['排名', '姓名', '班级类型', score_column]
+        if st.session_state.get('apply_course_credit_bonus') and '课程学分加分' in result_df.columns:
+            top10_columns.append('课程学分加分')
+        if st.session_state.get('apply_low_credit_penalty') and '低学分扣分' in result_df.columns:
+            top10_columns.append('低学分扣分')
+        top10_columns.append('总学分')
+        top10 = result_df.head(10)[top10_columns].copy()
+        top10[score_column] = top10[score_column].apply(lambda x: f"{x:.2f}")
+        if '课程学分加分' in top10.columns:
+            top10['课程学分加分'] = top10['课程学分加分'].apply(lambda x: f"{x:.2f}")
+        if '低学分扣分' in top10.columns:
+            top10['低学分扣分'] = top10['低学分扣分'].apply(lambda x: f"{x:.2f}")
         top10['总学分'] = top10['总学分'].apply(lambda x: f"{x:.1f}")
 
         # 添加奖牌emoji
@@ -1125,7 +1189,13 @@ def main():
                 return f"第{rank}名"
 
         top10['名次'] = top10['排名'].apply(add_medal)
-        top10 = top10[['名次', '姓名', '班级类型', '平均成绩', '总学分']]
+        display_columns = ['名次', '姓名', '班级类型', score_column]
+        if '课程学分加分' in top10.columns:
+            display_columns.append('课程学分加分')
+        if '低学分扣分' in top10.columns:
+            display_columns.append('低学分扣分')
+        display_columns.append('总学分')
+        top10 = top10[display_columns]
 
         st.dataframe(top10, use_container_width=True, hide_index=True)
 
