@@ -213,6 +213,72 @@ class DuplicateCourseTests(unittest.TestCase):
         self.assertEqual(enabled['综测成绩'], 82.4)
         self.assertIn('2024秋季学期：12学分，加2.4分', enabled['课程学分加分明细'])
 
+    def test_passing_retake_counts_when_recovering_unearned_credit(self):
+        grades = pd.DataFrame([
+            {
+                '学号': '22040031044', '姓名': '王千寻', '学年学期': '2026春季学期',
+                **self._row('C001', '正常课程', 80),
+            },
+            {
+                '学号': '22040031044', '姓名': '王千寻', '学年学期': '2026春季学期',
+                **self._row('C002', '补回学分课程', 75, '重修取得', '重修'),
+            },
+        ])
+        grades.loc[0, '学分'] = 9
+        grades.loc[1, '学分'] = 3
+        self.calculator.column_mapping.update({
+            '学号': '学号', '姓名': '姓名', '学年学期': '学年学期'
+        })
+        self.calculator.set_major('23kg')
+
+        result = self.calculator.calculate_student_gpa(
+            grades,
+            calc_mode='综测',
+            apply_low_credit_penalty=True,
+            apply_course_credit_bonus=True,
+        )
+
+        self.assertEqual(result['总学分'], 12)
+        self.assertEqual(result['平均成绩'], 78.75)
+        self.assertEqual(result['课程学分加分'], 2.4)
+        self.assertEqual(result['低学分扣分'], 0)
+        self.assertIn('2026春季学期：12学分，加2.4分', result['课程学分加分明细'])
+
+    def test_retake_does_not_repeat_credit_already_earned_in_input(self):
+        grades = pd.DataFrame([
+            {
+                '学号': '22040031044', '姓名': '王千寻', '学年学期': '2026春季学期',
+                **self._row('D001', '正常课程', 80),
+            },
+            {
+                '学号': '22040031044', '姓名': '王千寻', '学年学期': '2026春季学期',
+                **self._row('D002', '已获学分课程', 70),
+            },
+            {
+                '学号': '22040031044', '姓名': '王千寻', '学年学期': '2026春季学期',
+                **self._row('D002', '已获学分课程', 90, '重修取得', '重修'),
+            },
+        ])
+        grades.loc[0, '学分'] = 9
+        grades.loc[1, '学分'] = 3
+        grades.loc[2, '学分'] = 3
+        self.calculator.column_mapping.update({
+            '学号': '学号', '姓名': '姓名', '学年学期': '学年学期'
+        })
+        self.calculator.set_major('23kg')
+
+        result = self.calculator.calculate_student_gpa(
+            grades,
+            calc_mode='综测',
+            apply_course_credit_bonus=True,
+        )
+        bonus, details = self.calculator._calculate_course_credit_bonus(grades)
+
+        self.assertEqual(result['总学分'], 12)
+        self.assertEqual(result['平均成绩'], 77.5)
+        self.assertAlmostEqual(bonus, 2.4)
+        self.assertEqual(details[0]['通过学分（不含任选课）'], 12)
+
 
 if __name__ == '__main__':
     unittest.main()

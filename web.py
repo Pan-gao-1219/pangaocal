@@ -986,6 +986,7 @@ def main():
             help=(
                 "仅适用于海洋地球科学学院；同一年度夏季和秋季合并后判断，通过学分（不含任选课）"
                 "达到12分后，该学期必修及限选课程每学分加0.2分。"
+                "用于补回未取得学分的通过重修计入，已获学分的重复重修不重复计入。"
             )
         )
         apply_low_credit_penalty = st.checkbox(
@@ -993,7 +994,7 @@ def main():
             value=st.session_state.get('apply_low_credit_penalty', False),
             help=(
                 "仅适用于海洋地球科学学院；同一年度夏季和秋季合并计算，"
-                "未勾选时不进行此项扣分。"
+                "用于补回未取得学分的通过重修计入，未勾选时不进行此项扣分。"
             )
         )
         if apply_low_credit_penalty:

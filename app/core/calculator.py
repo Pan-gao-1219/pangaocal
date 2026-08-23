@@ -250,8 +250,8 @@ class StudentGradeCalculator:
         return True, self.major_name
 
     # ============ 成绩换算（完全不变） ============
-    def _convert_score(self, row):
-        """成绩换算"""
+    def _convert_score(self, row, include_retake=False):
+        """成绩换算；综测学分规则可选择保留重修成绩用于判断是否取得学分。"""
         score_col = self.column_mapping.get('总成绩')
         if not score_col or pd.isna(row[score_col]):
             return None
@@ -267,7 +267,7 @@ class StudentGradeCalculator:
             flag_col = self.column_mapping['成绩标志']
             score_flag = str(row[flag_col]) if pd.notna(row[flag_col]) else ''
 
-        if self._is_retake_record(row):
+        if self._is_retake_record(row) and not include_retake:
             return None
 
         if '旷考' in score_flag or '缺考' in score_flag:
@@ -619,6 +619,36 @@ class StudentGradeCalculator:
             return f'{year}秋季学期'
         return semester
 
+    def _get_earned_credit_mask(self, df):
+        """返回获得学分且不属于已获学分后重复重修的记录掩码。"""
+        passed_mask = (df['_计算成绩'] >= 60) & (df['_学分'] > 0)
+        if not passed_mask.any():
+            return passed_mask
+
+        already_earned_retake = self._get_already_earned_retake_mask(df)
+        course_identity = df.apply(self._get_course_identity, axis=1)
+        eligible_mask = passed_mask & ~already_earned_retake
+
+        # 同一课程即使出现多条通过记录，获得学分也只计算一次。
+        identified = eligible_mask & (course_identity != '')
+        duplicate_indices = course_identity[identified][
+            course_identity[identified].duplicated(keep='first')
+        ].index
+        eligible_mask.loc[duplicate_indices] = False
+        return eligible_mask
+
+    def _get_already_earned_retake_mask(self, df):
+        """识别同一数据中已有通过初修记录的重复重修。"""
+        course_identity = df.apply(self._get_course_identity, axis=1)
+        is_retake = df.apply(self._is_retake_record, axis=1)
+        passed_non_retake = (
+            (df['_计算成绩'] >= 60)
+            & (df['_学分'] > 0)
+            & ~is_retake
+        )
+        already_earned = set(course_identity[passed_non_retake]) - {''}
+        return is_retake & course_identity.isin(already_earned)
+
     def _calculate_low_credit_penalty(self, student_df, semester_filter=None):
         """按学期计算通过学分不足12分的扣分及明细。"""
         if '学年学期' not in self.column_mapping:
@@ -639,7 +669,9 @@ class StudentGradeCalculator:
 
         student_id = self._get_student_id(df.iloc[0])
         student_class = self._get_student_class(student_id)
-        df['_计算成绩'] = df.apply(self._convert_score, axis=1)
+        df['_计算成绩'] = df.apply(
+            lambda row: self._convert_score(row, include_retake=True), axis=1
+        )
         df['_学分'] = df.apply(self._get_credit, axis=1)
         df['_课程类别'] = df.apply(
             lambda row: self.classify_course(row, student_class), axis=1
@@ -651,11 +683,8 @@ class StudentGradeCalculator:
         nature_col = self.column_mapping.get('课程性质')
         if nature_col:
             optional_mask = optional_mask | df[nature_col].fillna('').astype(str).str.contains('任选')
-        passed = df[
-            (df['_计算成绩'] >= 60)
-            & (df['_学分'] > 0)
-            & ~optional_mask
-        ].copy()
+        earned_credit_mask = self._get_earned_credit_mask(df)
+        passed = df[earned_credit_mask & ~optional_mask].copy()
         passed_credits = passed.groupby(combined_sem_col)['_学分'].sum().to_dict()
 
         details = []
@@ -694,7 +723,9 @@ class StudentGradeCalculator:
 
         student_id = self._get_student_id(df.iloc[0])
         student_class = self._get_student_class(student_id)
-        df['_计算成绩'] = df.apply(self._convert_score, axis=1)
+        df['_计算成绩'] = df.apply(
+            lambda row: self._convert_score(row, include_retake=True), axis=1
+        )
         df['_学分'] = df.apply(self._get_credit, axis=1)
         df['_课程类别'] = df.apply(
             lambda row: self.classify_course(row, student_class), axis=1
@@ -710,9 +741,9 @@ class StudentGradeCalculator:
             # 无课程性质列时，使用系统能够识别的非任选课程作为必修/限选课程。
             bonus_course_mask = ~optional_mask
 
-        passed_mask = (df['_计算成绩'] >= 60) & (df['_学分'] > 0)
-        passed_non_optional = df[passed_mask & ~optional_mask].copy()
-        bonus_courses = df[passed_mask & ~optional_mask & bonus_course_mask].copy()
+        earned_credit_mask = self._get_earned_credit_mask(df)
+        passed_non_optional = df[earned_credit_mask & ~optional_mask].copy()
+        bonus_courses = df[earned_credit_mask & ~optional_mask & bonus_course_mask].copy()
 
         passed_credits = passed_non_optional.groupby(combined_sem_col)['_学分'].sum().to_dict()
         bonus_credits = bonus_courses.groupby(combined_sem_col)['_学分'].sum().to_dict()
@@ -830,8 +861,14 @@ class StudentGradeCalculator:
         df['_学号'] = student_id
         df['_姓名'] = df[self.column_mapping.get('姓名')].astype(str).str.strip()
 
-        df['_计算成绩'] = df.apply(self._convert_score, axis=1)
+        include_retake = calc_mode == '综测'
+        df['_计算成绩'] = df.apply(
+            lambda row: self._convert_score(row, include_retake=include_retake), axis=1
+        )
         df['_学分'] = df.apply(self._get_credit, axis=1)
+
+        if include_retake:
+            df = df[~self._get_already_earned_retake_mask(df)].copy()
 
         df = df.dropna(subset=['_计算成绩'])
         df = df[df['_计算成绩'] > 0]
