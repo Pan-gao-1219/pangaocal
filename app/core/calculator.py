@@ -685,7 +685,19 @@ class StudentGradeCalculator:
             optional_mask = optional_mask | df[nature_col].fillna('').astype(str).str.contains('任选')
         earned_credit_mask = self._get_earned_credit_mask(df)
         passed = df[earned_credit_mask & ~optional_mask].copy()
+        optional_courses = df[earned_credit_mask & optional_mask].copy()
         passed_credits = passed.groupby(combined_sem_col)['_学分'].sum().to_dict()
+        optional_credits = optional_courses.groupby(combined_sem_col)['_学分'].sum().to_dict()
+
+        course_name_col = self.column_mapping.get('课程名称')
+        optional_course_names = {}
+        if course_name_col:
+            for semester, group in optional_courses.groupby(combined_sem_col, sort=False):
+                optional_course_names[semester] = [
+                    str(name).strip()
+                    for name in group[course_name_col].dropna().tolist()
+                    if str(name).strip()
+                ]
 
         details = []
         total_penalty = 0.0
@@ -697,6 +709,8 @@ class StudentGradeCalculator:
             details.append({
                 '学期': semester,
                 '通过学分（不含任选课）': credits,
+                '任选课学分（不计）': float(optional_credits.get(semester, 0.0)),
+                '任选课明细': optional_course_names.get(semester, []),
                 '缺少学分': missing,
                 '扣分': penalty,
             })
@@ -744,9 +758,21 @@ class StudentGradeCalculator:
         earned_credit_mask = self._get_earned_credit_mask(df)
         passed_non_optional = df[earned_credit_mask & ~optional_mask].copy()
         bonus_courses = df[earned_credit_mask & ~optional_mask & bonus_course_mask].copy()
+        optional_courses = df[earned_credit_mask & optional_mask].copy()
 
         passed_credits = passed_non_optional.groupby(combined_sem_col)['_学分'].sum().to_dict()
         bonus_credits = bonus_courses.groupby(combined_sem_col)['_学分'].sum().to_dict()
+        optional_credits = optional_courses.groupby(combined_sem_col)['_学分'].sum().to_dict()
+
+        course_name_col = self.column_mapping.get('课程名称')
+        optional_course_names = {}
+        if course_name_col:
+            for semester, group in optional_courses.groupby(combined_sem_col, sort=False):
+                optional_course_names[semester] = [
+                    str(name).strip()
+                    for name in group[course_name_col].dropna().tolist()
+                    if str(name).strip()
+                ]
 
         details = []
         total_bonus = 0.0
@@ -760,6 +786,8 @@ class StudentGradeCalculator:
                 '学期': semester,
                 '通过学分（不含任选课）': credits,
                 '必修及限选学分': eligible_credits,
+                '任选课学分（不计）': float(optional_credits.get(semester, 0.0)),
+                '任选课明细': optional_course_names.get(semester, []),
                 '是否达到12学分': qualified,
                 '加分': bonus,
             })
@@ -1008,11 +1036,30 @@ class StudentGradeCalculator:
             '低学分扣分': self.format_significant_digits(low_credit_penalty, 5),
             '综测成绩': self.format_significant_digits(comprehensive_score, 5),
             '课程学分加分明细': '；'.join(
-                f"{item['学期']}：{item['必修及限选学分']:g}学分，加{item['加分']:g}分"
-                for item in bonus_details if item['加分'] > 0
+                (
+                    f"{item['学期']}：计入{item['通过学分（不含任选课）']:g}学分"
+                    + (
+                        f"，另有任选课{item['任选课学分（不计）']:g}学分不计"
+                        f"（{'、'.join(item['任选课明细'])}）"
+                        if item['任选课学分（不计）'] > 0 else ''
+                    )
+                    + (
+                        f"，必修及限选课加{item['加分']:g}分"
+                        if item['加分'] > 0 else '，未达到12学分，不加分'
+                    )
+                )
+                for item in bonus_details
             ) or '无',
             '低学分扣分明细': '；'.join(
-                f"{item['学期']}：{item['通过学分（不含任选课）']:g}学分，扣{item['扣分']:g}分"
+                (
+                    f"{item['学期']}：计入{item['通过学分（不含任选课）']:g}学分"
+                    + (
+                        f"，另有任选课{item['任选课学分（不计）']:g}学分不计"
+                        f"（{'、'.join(item['任选课明细'])}）"
+                        if item['任选课学分（不计）'] > 0 else ''
+                    )
+                    + f"，扣{item['扣分']:g}分"
+                )
                 for item in penalty_details if item['扣分'] > 0
             ) or '无',
             '总学分': self.format_significant_digits(total_credits, 5),

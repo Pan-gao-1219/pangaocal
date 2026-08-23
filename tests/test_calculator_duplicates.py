@@ -145,7 +145,10 @@ class DuplicateCourseTests(unittest.TestCase):
         self.assertEqual(disabled['综测成绩'], 80)
         self.assertEqual(enabled['低学分扣分'], 10)
         self.assertEqual(enabled['综测成绩'], 70)
-        self.assertIn('2024秋季学期：10学分，扣10分', enabled['低学分扣分明细'])
+        self.assertIn(
+            '2024秋季学期：计入10学分，另有任选课2学分不计（任选课程），扣10分',
+            enabled['低学分扣分明细'],
+        )
 
     def test_low_credit_penalty_cannot_apply_to_other_schools(self):
         grades = pd.DataFrame([{
@@ -211,7 +214,10 @@ class DuplicateCourseTests(unittest.TestCase):
         self.assertEqual(enabled['课程学分加分'], 2.4)
         self.assertEqual(enabled['低学分扣分'], 0)
         self.assertEqual(enabled['综测成绩'], 82.4)
-        self.assertIn('2024秋季学期：12学分，加2.4分', enabled['课程学分加分明细'])
+        self.assertIn(
+            '2024秋季学期：计入12学分，另有任选课2学分不计（任选课程），必修及限选课加2.4分',
+            enabled['课程学分加分明细'],
+        )
 
     def test_passing_retake_counts_when_recovering_unearned_credit(self):
         grades = pd.DataFrame([
@@ -242,7 +248,10 @@ class DuplicateCourseTests(unittest.TestCase):
         self.assertEqual(result['平均成绩'], 78.75)
         self.assertEqual(result['课程学分加分'], 2.4)
         self.assertEqual(result['低学分扣分'], 0)
-        self.assertIn('2026春季学期：12学分，加2.4分', result['课程学分加分明细'])
+        self.assertIn(
+            '2026春季学期：计入12学分，必修及限选课加2.4分',
+            result['课程学分加分明细'],
+        )
 
     def test_retake_does_not_repeat_credit_already_earned_in_input(self):
         grades = pd.DataFrame([
