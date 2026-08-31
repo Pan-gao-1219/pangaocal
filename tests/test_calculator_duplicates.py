@@ -140,15 +140,15 @@ class DuplicateCourseTests(unittest.TestCase):
         enabled = self.calculator.calculate_student_gpa(
             grades, calc_mode='综测', apply_low_credit_penalty=True
         )
+        penalty, details = self.calculator._calculate_low_credit_penalty(grades)
 
         self.assertEqual(disabled['低学分扣分'], 0)
         self.assertEqual(disabled['综测成绩'], 80)
-        self.assertEqual(enabled['低学分扣分'], 10)
-        self.assertEqual(enabled['综测成绩'], 70)
-        self.assertIn(
-            '2024秋季学期：计入10学分，另有任选课2学分不计（任选课程），扣10分',
-            enabled['低学分扣分明细'],
-        )
+        self.assertEqual(enabled['低学分扣分'], 0)
+        self.assertEqual(enabled['综测成绩'], 80)
+        self.assertEqual(enabled['低学分扣分明细'], '无')
+        self.assertEqual(penalty, 0)
+        self.assertEqual(details[0]['通过学分'], 12)
 
     def test_low_credit_penalty_cannot_apply_to_other_schools(self):
         grades = pd.DataFrame([{
@@ -215,7 +215,8 @@ class DuplicateCourseTests(unittest.TestCase):
         self.assertEqual(enabled['低学分扣分'], 0)
         self.assertEqual(enabled['综测成绩'], 82.4)
         self.assertIn(
-            '2024秋季学期：计入12学分，另有任选课2学分不计（任选课程），必修及限选课加2.4分',
+            '2024秋季学期：通过14学分（其中任选课2学分计入12学分门槛：任选课程），'
+            '必修及限选课12学分，加2.4分',
             enabled['课程学分加分明细'],
         )
 
@@ -249,7 +250,7 @@ class DuplicateCourseTests(unittest.TestCase):
         self.assertEqual(result['课程学分加分'], 2.4)
         self.assertEqual(result['低学分扣分'], 0)
         self.assertIn(
-            '2026春季学期：计入12学分，必修及限选课加2.4分',
+            '2026春季学期：通过12学分，必修及限选课12学分，加2.4分',
             result['课程学分加分明细'],
         )
 
@@ -286,7 +287,7 @@ class DuplicateCourseTests(unittest.TestCase):
         self.assertEqual(result['总学分'], 12)
         self.assertEqual(result['平均成绩'], 77.5)
         self.assertAlmostEqual(bonus, 2.4)
-        self.assertEqual(details[0]['通过学分（不含任选课）'], 12)
+        self.assertEqual(details[0]['通过学分'], 12)
 
 
 if __name__ == '__main__':
