@@ -629,10 +629,26 @@ class StudentGradeCalculator:
         course_identity = df.apply(self._get_course_identity, axis=1)
         eligible_mask = passed_mask & ~already_earned_retake
 
-        # 同一课程即使出现多条通过记录，获得学分也只计算一次。
+        # 同一课程在不同学期均为初修取得时，每学期分别计入；仅过滤同一
+        # 合并学期内的重复记录。夏季与同年度秋季视为同一个合并学期。
+        if '_综测合并学期' in df.columns:
+            semester_identity = df['_综测合并学期'].fillna('').astype(str)
+        elif '学年学期' in self.column_mapping:
+            semester_col = self.column_mapping['学年学期']
+            semester_identity = df[semester_col].apply(self._merge_summer_autumn_semester)
+            semester_identity = semester_identity.fillna('').astype(str)
+        else:
+            semester_identity = pd.Series('', index=df.index, dtype=str)
+
         identified = eligible_mask & (course_identity != '')
-        duplicate_indices = course_identity[identified][
-            course_identity[identified].duplicated(keep='first')
+        credit_identity = pd.DataFrame({
+            '课程': course_identity,
+            '合并学期': semester_identity,
+        }, index=df.index)
+        duplicate_indices = credit_identity.loc[identified][
+            credit_identity.loc[identified].duplicated(
+                subset=['课程', '合并学期'], keep='first'
+            )
         ].index
         eligible_mask.loc[duplicate_indices] = False
         return eligible_mask

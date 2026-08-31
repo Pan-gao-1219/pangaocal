@@ -288,6 +288,38 @@ class DuplicateCourseTests(unittest.TestCase):
         self.assertAlmostEqual(bonus, 2.4)
         self.assertEqual(details[0]['通过学分'], 12)
 
+    def test_same_initial_course_in_different_semesters_counts_each_time(self):
+        grades = pd.DataFrame([
+            {
+                '学号': '23040031038', '姓名': '潘高', '学年学期': '2025秋季学期',
+                **self._row('E001', '跨学期重复修读课程', 98),
+            },
+            {
+                '学号': '23040031038', '姓名': '潘高', '学年学期': '2025秋季学期',
+                **self._row('E002', '秋季其他课程', 90),
+            },
+            {
+                '学号': '23040031038', '姓名': '潘高', '学年学期': '2026春季学期',
+                **self._row('E001', '跨学期重复修读课程', 96),
+            },
+            {
+                '学号': '23040031038', '姓名': '潘高', '学年学期': '2026春季学期',
+                **self._row('E003', '春季其他课程', 90),
+            },
+        ])
+        self.calculator.column_mapping.update({
+            '学号': '学号', '姓名': '姓名', '学年学期': '学年学期'
+        })
+        self.calculator.set_major('23kg')
+
+        bonus, details = self.calculator._calculate_course_credit_bonus(grades)
+
+        self.assertAlmostEqual(bonus, 4.8)
+        self.assertEqual(
+            {item['学期']: item['通过学分'] for item in details},
+            {'2025秋季学期': 12, '2026春季学期': 12},
+        )
+
 
 if __name__ == '__main__':
     unittest.main()
