@@ -981,12 +981,12 @@ def main():
         previous_penalty_setting = st.session_state.get('apply_low_credit_penalty', False)
 
         apply_course_credit_bonus = st.checkbox(
-            "启用“满足12学分后，必修课与限选课每学分加0.2分”规则",
+            "启用“满足12学分后，全部已通过课程每学分加0.2分”规则",
             value=st.session_state.get('apply_course_credit_bonus', False),
             help=(
                 "仅适用于海洋地球科学学院；同一年度夏季和秋季合并后判断，所有通过课程学分"
                 "（包括通识课和任选课）均计入12学分门槛。"
-                "达到12分后，该学期必修及限选课程每学分加0.2分。"
+                "达到12分后，该学期全部已通过课程每学分加0.2分。"
                 "用于补回未取得学分的通过重修计入，已获学分的重复重修不重复计入。"
             )
         )
@@ -1008,7 +1008,7 @@ def main():
         if apply_course_credit_bonus:
             st.success(
                 "已启用课程学分加分：同一年度夏季和秋季合计达到12学分后，"
-                "该学期必修课与限选课按每学分0.2分加分；春季单独判断。"
+                "该学期全部已通过课程按每学分0.2分加分；春季单独判断。"
             )
         if (
             apply_course_credit_bonus != previous_bonus_setting

@@ -211,12 +211,11 @@ class DuplicateCourseTests(unittest.TestCase):
 
         self.assertEqual(disabled['课程学分加分'], 0)
         self.assertEqual(disabled['综测成绩'], 80)
-        self.assertEqual(enabled['课程学分加分'], 2.4)
+        self.assertEqual(enabled['课程学分加分'], 2.8)
         self.assertEqual(enabled['低学分扣分'], 0)
-        self.assertEqual(enabled['综测成绩'], 82.4)
+        self.assertEqual(enabled['综测成绩'], 82.8)
         self.assertIn(
-            '2024秋季学期：通过14学分（其中任选课2学分计入12学分门槛：任选课程），'
-            '必修及限选课12学分，加2.4分',
+            '2024秋季学期：通过14学分，全部通过课程加2.8分',
             enabled['课程学分加分明细'],
         )
 
@@ -250,7 +249,7 @@ class DuplicateCourseTests(unittest.TestCase):
         self.assertEqual(result['课程学分加分'], 2.4)
         self.assertEqual(result['低学分扣分'], 0)
         self.assertIn(
-            '2026春季学期：通过12学分，必修及限选课12学分，加2.4分',
+            '2026春季学期：通过12学分，全部通过课程加2.4分',
             result['课程学分加分明细'],
         )
 

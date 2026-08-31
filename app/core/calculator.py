@@ -693,7 +693,7 @@ class StudentGradeCalculator:
         return total_penalty, details
 
     def _calculate_course_credit_bonus(self, student_df, semester_filter=None):
-        """按学期计算必修课与限选课的学分加分及明细。"""
+        """达到12学分后，按该学期全部已通过课程学分计算加分。"""
         if '学年学期' not in self.column_mapping:
             return 0.0, []
 
@@ -710,61 +710,28 @@ class StudentGradeCalculator:
         combined_sem_col = '_综测合并学期'
         df[combined_sem_col] = df[sem_col].apply(self._merge_summer_autumn_semester)
 
-        student_id = self._get_student_id(df.iloc[0])
-        student_class = self._get_student_class(student_id)
         df['_计算成绩'] = df.apply(
             lambda row: self._convert_score(row, include_retake=True), axis=1
         )
         df['_学分'] = df.apply(self._get_credit, axis=1)
-        df['_课程类别'] = df.apply(
-            lambda row: self.classify_course(row, student_class), axis=1
-        )
-
-        optional_mask = df['_课程类别'] == '通识教育选修课程'
-        nature_col = self.column_mapping.get('课程性质')
-        if nature_col:
-            nature = df[nature_col].fillna('').astype(str)
-            optional_mask = optional_mask | nature.str.contains('任选')
-            bonus_course_mask = nature.str.contains('必修|限选')
-        else:
-            # 无课程性质列时，使用系统能够识别的非任选课程作为必修/限选课程。
-            bonus_course_mask = ~optional_mask
 
         earned_credit_mask = self._get_earned_credit_mask(df)
         passed_courses = df[earned_credit_mask].copy()
-        bonus_courses = df[earned_credit_mask & ~optional_mask & bonus_course_mask].copy()
-        optional_courses = df[earned_credit_mask & optional_mask].copy()
 
-        # 所有通过课程（含任选课）均用于判断是否达到12学分；
-        # 达标后的加分仍只按必修课与限选课学分计算。
+        # 所有通过课程（含通识课、任选课）既用于12学分门槛，也参与0.2加分。
         passed_credits = passed_courses.groupby(combined_sem_col)['_学分'].sum().to_dict()
-        bonus_credits = bonus_courses.groupby(combined_sem_col)['_学分'].sum().to_dict()
-        optional_credits = optional_courses.groupby(combined_sem_col)['_学分'].sum().to_dict()
-
-        course_name_col = self.column_mapping.get('课程名称')
-        optional_course_names = {}
-        if course_name_col:
-            for semester, group in optional_courses.groupby(combined_sem_col, sort=False):
-                optional_course_names[semester] = [
-                    str(name).strip()
-                    for name in group[course_name_col].dropna().tolist()
-                    if str(name).strip()
-                ]
 
         details = []
         total_bonus = 0.0
         for semester in df[combined_sem_col].dropna().drop_duplicates().tolist():
             credits = float(passed_credits.get(semester, 0.0))
-            eligible_credits = float(bonus_credits.get(semester, 0.0))
             qualified = credits >= 12.0
-            bonus = eligible_credits * 0.2 if qualified else 0.0
+            bonus = credits * 0.2 if qualified else 0.0
             total_bonus += bonus
             details.append({
                 '学期': semester,
                 '通过学分': credits,
-                '必修及限选学分': eligible_credits,
-                '任选课学分（仅计入门槛）': float(optional_credits.get(semester, 0.0)),
-                '任选课明细': optional_course_names.get(semester, []),
+                '加分学分': credits if qualified else 0.0,
                 '是否达到12学分': qualified,
                 '加分': bonus,
             })
@@ -1016,12 +983,7 @@ class StudentGradeCalculator:
                 (
                     f"{item['学期']}：通过{item['通过学分']:g}学分"
                     + (
-                        f"（其中任选课{item['任选课学分（仅计入门槛）']:g}学分计入12学分门槛："
-                        f"{'、'.join(item['任选课明细'])}）"
-                        if item['任选课学分（仅计入门槛）'] > 0 else ''
-                    )
-                    + (
-                        f"，必修及限选课{item['必修及限选学分']:g}学分，加{item['加分']:g}分"
+                        f"，全部通过课程加{item['加分']:g}分"
                         if item['加分'] > 0 else '，未达到12学分，不加分'
                     )
                 )
@@ -1447,7 +1409,7 @@ class StudentGradeCalculator:
                     f'第{self.header_row + 1}行',
                     str(semester_filter),
                     calc_mode,
-                    '启用（每学期达到12学分后，必修及限选课每学分加0.2分）'
+                    '启用（每学期达到12学分后，全部已通过课程每学分加0.2分）'
                     if self.apply_course_credit_bonus else '未启用',
                     '启用（每学期不足12学分，每缺1学分扣5分）'
                     if self.apply_low_credit_penalty else '未启用',
